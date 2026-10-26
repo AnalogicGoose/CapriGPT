@@ -40,7 +40,7 @@ export class Brain {
     const id = evt.session_id || 'default';
     let s = this.sessions.get(id);
     if (!s) {
-      s = { id, project: 'Claude', taskStart: null, count: 0, files: new Set(), log: [], working: false, waiting: false };
+      s = { id, project: 'Local task', taskStart: null, count: 0, files: new Set(), log: [], working: false, waiting: false };
       this.sessions.set(id, s);
     }
     if (evt.cwd) s.project = basename(evt.cwd);
@@ -338,16 +338,16 @@ export class Brain {
     this.say('work', fmt(this.t.status, { project: s.project, time }) + extra, s, { log: s.log, hold: 6000 });
   }
 
-  // What's going on, in plain words, for her chat: so she can answer "what's Claude up to?".
+  // Describe only received events; do not pretend the planned Codex feed is connected.
   context() {
     const busy = this.busySessions.sort((a, b) => b.seen - a.seen);
     const now = busy.length
       ? busy.map((s) => {
         const time = s.taskStart ? ` for ${duration(Date.now() - s.taskStart, 'en')}` : '';
         const last = s.last ? `, last: ${s.last.verb} ${s.last.target}` : '';
-        return `Claude is working on ${s.project}${time} (${plural(s.count, ['action', 'actions'], 'en')} so far${last}).`;
+        return `A legacy task event reports work on ${s.project}${time} (${plural(s.count, ['action', 'actions'], 'en')} so far${last}). This is not a live Codex feed.`;
       }).join(' ')
-      : 'Claude is idle.';
+      : 'Local Ollama chat is available. ChatGPT/Codex task integration is not connected. No task events have been received; their current activity is unknown.';
     const d = this.mission?.day;
     const today = d ? ` Today: ${d.missions} tasks finished, ${d.actions} actions, ${d.files} files changed, ${d.errors} errors.` : '';
     return now + today;

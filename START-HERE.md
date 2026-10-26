@@ -40,7 +40,7 @@ Ctrl+Alt+C uses upstream's small biochip view; it is **not** gaming mode.
 
 AI requests go to a literal loopback HTTP address, normally `127.0.0.1:11434`. Remote hosts, redirects, and cloud model metadata are rejected. Use `127.0.0.1`, rather than `localhost`, if setting `OLLAMA_HOST`. This assumes you trust your installed local Ollama service; Capri cannot control Ollama's own update checks or a malicious replacement service.
 
-Chat history remains in renderer memory for this run. The last 12 conversation messages, the character prompt, and upstream task-summary context are sent to local Ollama. App names are added only when app closing is enabled. Upstream window tracking reads window positions locally. Settings and the local mission log live under `%APPDATA%\CapriGPT`; the old Capri profile is separate. No API key is required. No Claude hooks or startup entry are installed automatically. Legacy Claude options remain available for users who intentionally select them.
+Chat history remains in renderer memory for this run. The last 12 conversation messages, the character prompt, and upstream task-summary context are sent to local Ollama. App names are added only when app closing is enabled. Upstream window tracking reads window positions locally. Settings and the local mission log live under `%APPDATA%\CapriGPT`; the old Capri profile is separate. No API key is required. No Claude hooks or startup entry are installed automatically. Legacy Claude options are isolated in an optional legacy submenu. Normal chat and help describe Capri as a companion for ChatGPT and Codex, while clearly stating that live task integration is not connected.
 
 The local event bridge remains on `127.0.0.1:47823` and rejects browser Origin headers. It is a local development integration, not a boundary against malicious programs already running on the PC. Debug routes are available only with `npm.cmd run dev`; use normal start for daily use.
 
@@ -59,7 +59,7 @@ npm.cmd test
 npm.cmd run test:desktop
 ```
 
-The safety tests use fake apps and fake confirmation responses; they never close a real app. The desktop smoke test starts the actual Electron renderer, submits a local arithmetic question, checks the displayed answer, then exercises gaming pause, unload and resume. It exits afterward. Run it while another CapriGPT instance is closed and with the default model installed. Test captures are in `captures/` and ignored by Git.
+The safety tests use fake apps and fake confirmation responses; they never close a real app. The desktop smoke test starts the actual Electron renderer, asks who Capri works with, checks that her streamed introduction names ChatGPT or Codex without legacy Claude branding, then exercises gaming pause, unload and resume. It exits afterward. Run it while another CapriGPT instance is closed and with the default model installed. Test captures are in `captures/` and ignored by Git.
 
 ## Rights and future integration
 

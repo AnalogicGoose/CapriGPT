@@ -15,3 +15,9 @@ Validated on this Windows laptop during the CapriGPT build session:
 One cold-start inference took roughly 27 seconds in Ollama's server log; subsequent runs were faster. This is a functional prototype, not a performance benchmark. Small model answers can be inaccurate or stay too much in character; a failed arithmetic answer in an earlier run prompted clearer helpful-assistant instructions. No gaming FPS test was performed.
 
 Real applications were not closed or force-quit as part of validation. Approval behavior was tested with fake app backends; production requests use the native confirmation gate. No Windows installer was built and no cloud inference request was sent. After browser access connected, the GitHub fork was created at https://github.com/Chocoyito1/capri-desktop and the prototype branch was pushed. No PR or release was created. Inherited asset rights limitations still apply.
+
+## Companion identity update
+
+Removed Claude as the default collaborator from the system prompt and task context. Default help now describes local Ollama chat with planned ChatGPT/Codex task integration. Legacy hook setup remains in a labelled submenu. Added explicit limits against inventing calendar, clock, sunrise, orbit tracking or live task access. Restart clears the old in-memory conversation.
+
+Safety tests and the desktop smoke test pass after this change. The updated live chat test answered: "I\'m working with ChatGPT and Codex as my collaborators, but their task integration isn\'t connected yet, so I don\'t have access to their current tasks or activities." The sampled response is evidence for this prompt, not a guarantee that a small generative model will never hallucinate. Gaming cancellation/unload/resume checks also passed.

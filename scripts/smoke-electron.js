@@ -23,9 +23,9 @@ app.whenReady().then(async () => {
     // Open the actual chat UI and submit through its form.
     win.webContents.send('capri:command', { name: 'chat' });
     await pause(2000);
-    await js(`document.querySelector('.panel__input').value = 'What is 7 plus 8? Reply with only the number.';
+    await js(`document.querySelector('.panel__input').value = 'Who are you working with now, and can you see their tasks yet?';
       document.querySelector('.panel__chat').requestSubmit();`);
-    assert.equal(await js("document.querySelector('.panel__quote').textContent"), 'What is 7 plus 8? Reply with only the number.');
+    assert.equal(await js("document.querySelector('.panel__quote').textContent"), 'Who are you working with now, and can you see their tasks yet?');
     let reply = '';
     for (let i = 0; i < 120; i++) {
       await pause(500);
@@ -34,6 +34,8 @@ app.whenReady().then(async () => {
     }
     assert.ok(reply.length > 0, 'No answer in the renderer');
     assert.ok((await js('window.smokeDeltas')).length > 0, 'No streamed model output received');
+    assert.match(reply, /ChatGPT|Codex/i, 'Expected the current collaborators in her introduction');
+    assert.doesNotMatch(reply, /Claude/i, 'Unexpected legacy branding in her introduction');
     console.log('RENDERER_REPLY:', reply);
     const capture = path.resolve(__dirname, '..', 'captures', 'local-chat.png');
     fs.mkdirSync(path.dirname(capture), { recursive: true });

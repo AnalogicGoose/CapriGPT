@@ -302,10 +302,13 @@ function rebuildTray() {
       click: (item) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: item.checked }),
     },
     { type: 'separator' },
-    hookState.installed
-      ? { label: t.hooksOn, enabled: false }
-      : { label: t.hooksOff, click: () => runHooks('install') },
-    ...(hookState.installed ? [{ label: t.hooksRemove, click: () => runHooks('uninstall') }] : []),
+    { label: 'ChatGPT / Codex task integration — coming next', enabled: false },
+    { label: 'Legacy Claude integration (optional)', submenu: [
+      hookState.installed
+        ? { label: t.hooksOn, enabled: false }
+        : { label: t.hooksOff, click: () => runHooks('install') },
+      ...(hookState.installed ? [{ label: t.hooksRemove, click: () => runHooks('uninstall') }] : []),
+    ] },
     { type: 'separator' },
     { label: t.quit, click: () => app.quit() },
   ]);

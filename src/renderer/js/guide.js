@@ -77,53 +77,26 @@ export class Guide {
 
   // ---------- topics ----------
 
-  // First launch, or nothing hooked up yet: who she is, and plugging her into Claude Code.
+  // Default help describes this fork, without claiming a live task connection.
   welcome() {
-    return this.scene(async () => {
-      const w = this.brain.t.welcome;
-      const [hooks, found] = await Promise.all([this.host.hooksStatus(), this.host.claudeFound()]);
-      if (hooks.installed) {
-        this.capri.perform('curious', this.capri.towardCenter());
-        await this.ask({ face: 'look', line: w.ready, quote: w.readyHow, actions: [{ id: 'ok', label: w.ok, primary: true }, { id: 'more', label: this.t.more }] })
-          .then((id) => id === 'more' && this.menuNow());
-      } else if (found) {
-        await this.connect();
-      } else {
-        const id = await this.ask({
-          face: 'aside',
-          line: w.hi,
-          quote: `${w.noClaude}\n${w.menu}`,
-          actions: [{ id: 'claude', label: w.whatClaude, primary: true }, { id: 'later', label: w.justHang }],
-        });
-        if (id === 'claude') {
-          this.host.openClaudeHelp();
-          await this.ask({ face: 'smug', line: w.hi, quote: w.afterInstall, actions: [{ id: 'ok', label: w.ok }] });
-        }
-      }
-      this.host.setConfig({ welcomed: true });
-    });
+    return this.menu();
   }
 
-  // "How does it work?" in her menu: what she can show you.
   menu() {
     return this.scene(() => this.menuNow());
   }
 
   async menuNow() {
-    const t = this.t;
-    const hooks = await this.host.hooksStatus();
-    const actions = [];
-    if (!hooks.installed) actions.push({ id: 'connect', label: t.topics.connect, primary: true });
-    actions.push({ id: 'icon', label: t.topics.icon, primary: hooks.installed });
-    actions.push({ id: 'claude', label: t.topics.claude });
-    actions.push({ id: 'folder', label: t.topics.folder });
-    actions.push({ id: 'close', label: t.topics.close });
-    this.capri.perform('curious', this.capri.towardCenter());
-    const id = await this.ask({ face: 'smug', line: t.menu.line, quote: t.menu.quote, actions });
-    if (id === 'connect') await this.connect();
-    else if (id === 'icon') await this.icon();
-    else if (id === 'claude') await this.claude();
-    else if (id === 'folder') await this.folder();
+    const spanish = this.brain.lang === 'es';
+    const id = await this.ask({
+      face: 'look',
+      line: spanish ? 'Soy CapriGPT, tu compañera para trabajar con ChatGPT y Codex.' : 'I’m CapriGPT, your companion for working with ChatGPT and Codex.',
+      quote: spanish
+        ? 'Por ahora conversamos localmente con Ollama. La conexión con las tareas de Codex viene después; todavía no puedo verlas. El modo juego pausa la IA y me oculta.'
+        : 'For now we chat locally through Ollama. Live Codex task notifications are coming next; I cannot see those tasks yet. Gaming mode pauses AI and hides me.',
+      actions: [{ id: 'icon', label: this.t.topics.icon, primary: true }, { id: 'close', label: this.t.ok }],
+    });
+    if (id === 'icon') await this.icon();
   }
 
   // Plugging her into Claude Code: one click, then a fresh Claude Code session.

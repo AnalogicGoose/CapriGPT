@@ -82,7 +82,7 @@ export const LINES = {
       prompts: ['prompt', 'prompts'], approvals: ['autorisation', 'autorisations'], projects: ['projet', 'projets'],
       copy: 'Copier l’image', copied: 'Copiée ✓', copyFailed: 'Copie impossible', close: 'Fermer',
       lines: {
-        none: ['Rien au journal aujourd’hui. Nuit calme.', 'Journal vide. Claude a pris sa journée.'],
+        none: ['Rien au journal aujourd’hui. Nuit calme.', 'Aucune activité reçue pour le moment.'],
         light: ['Petite journée. Je prends.', 'Service court. Voilà le journal.'],
         good: ['Pas mal, choom. Voilà ta journée.', 'Le journal du jour. Plutôt nova.'],
         big: ['Grosse journée. Night City n’a jamais bougé aussi vite.', 'Regarde-moi ça. On était en feu aujourd’hui.'],
@@ -237,7 +237,7 @@ export const LINES = {
       prompts: ['prompt', 'prompts'], approvals: ['approval', 'approvals'], projects: ['project', 'projects'],
       copy: 'Copy image', copied: 'Copied ✓', copyFailed: 'Couldn’t copy', close: 'Close',
       lines: {
-        none: ['Nothing on the log today. Quiet night.', 'Empty log. Claude took the day off.'],
+        none: ['Nothing on the log today. Quiet night.', 'No task activity received yet.'],
         light: ['Light day. I’ll take it.', 'Short shift. Here’s the log.'],
         good: ['Not bad, choom. Here’s your day.', 'Today’s log. Pretty nova.'],
         big: ['Busy day. Night City never moved this fast.', 'Look at that. We were on fire today.'],
@@ -391,7 +391,7 @@ export const LINES = {
       prompts: ['prompt', 'prompts'], approvals: ['permiso', 'permisos'], projects: ['proyecto', 'proyectos'],
       copy: 'Copiar imagen', copied: 'Copiada ✓', copyFailed: 'No se pudo copiar', close: 'Cerrar',
       lines: {
-        none: ['Nada en el registro hoy. Noche tranquila.', 'Registro vacío. Claude se tomó el día libre.'],
+        none: ['Nada en el registro hoy. Noche tranquila.', 'Todavía no he recibido actividad de tareas.'],
         light: ['Día ligero. Me vale.', 'Turno corto. Aquí está el registro.'],
         good: ['Nada mal, choom. Aquí está tu día.', 'El registro del día. Bastante nova.'],
         big: ['Día intenso. Night City nunca fue tan rápido.', 'Mira eso. Hoy estábamos que ardíamos.'],
@@ -544,7 +544,7 @@ export const LINES = {
       prompts: ['prompt', 'prompts'], approvals: ['aprovação', 'aprovações'], projects: ['projeto', 'projetos'],
       copy: 'Copiar imagem', copied: 'Copiada ✓', copyFailed: 'Não deu para copiar', close: 'Fechar',
       lines: {
-        none: ['Nada no registro hoje. Noite tranquila.', 'Registro vazio. O Claude tirou o dia de folga.'],
+        none: ['Nada no registro hoje. Noite tranquila.', 'Ainda não recebi atividade de tarefas.'],
         light: ['Dia leve. Tá ótimo.', 'Turno curto. Aqui está o registro.'],
         good: ['Nada mal, choom. Aqui está o seu dia.', 'O registro do dia. Bem nova.'],
         big: ['Dia cheio. Night City nunca andou tão rápido.', 'Olha isso. A gente estava pegando fogo hoje.'],
@@ -699,7 +699,7 @@ export const LINES = {
       projects: { one: 'проект', few: 'проекта', many: 'проектов', other: 'проекта' },
       copy: 'Копировать', copied: 'Скопировано ✓', copyFailed: 'Не удалось', close: 'Закрыть',
       lines: {
-        none: ['Сегодня журнал пуст. Тихая ночь.', 'Пусто. У Claude выходной.'],
+        none: ['Сегодня журнал пуст. Тихая ночь.', 'События задач пока не получены.'],
         light: ['Лёгкий день. Сойдёт.', 'Короткая смена. Вот журнал.'],
         good: ['Неплохо, чумба. Вот твой день.', 'Журнал за день. Вполне нова.'],
         big: ['Жаркий день. Найт-Сити никогда так не гнал.', 'Ты глянь. Сегодня мы горели.'],
