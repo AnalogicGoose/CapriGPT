@@ -326,6 +326,11 @@ export class Brain {
 
   // What she says when you click her. Nothing going on: she offers to talk (chat.js).
   status() {
+    const integration = this.integrationStatusMessage?.();
+    if (integration) {
+      this.panel.say(integration);
+      return;
+    }
     const busy = this.busySessions;
     if (!busy.length) {
       const talk = this.onTalk && { actions: [{ id: 'talk', label: this.t.chat.talk }], onAction: () => this.onTalk(), hold: 6000 };

@@ -55,3 +55,7 @@ Quiet mode keeps routine work silent, throttles burst pulses, and uses a new hel
 ## Opening greeting restored
 
 Removed the first-launch-only condition from the existing full “hi” entrance. Visible fresh launches now play the original intro, while the onboarding message remains first-launch-only. Starting stowed still respects the saved visibility setting, missing intro assets still fall back to materialization, and reduced motion is handled by the existing intro implementation. Clicking the shortcut while Capri is already running displays status instead of restarting her. The isolated Electron integration smoke test passes with this startup path.
+
+## Click status follows Codex activity
+
+The click/status handler previously consulted only legacy sessions, so it could claim idle while Codex notifications animated work. It now queries the same observed Codex snapshot as the animation controller. Approval takes precedence across concurrent turns, then errors and work; completed turns allow the existing idle/talk fallback. The status query has no approval or action side effects. Twelve tests pass with added status assertions; the isolated Electron test delivers real hook fixtures and invokes the exact status handler used by clicks, verifying the working text and panel state before testing approval/resume/completion.

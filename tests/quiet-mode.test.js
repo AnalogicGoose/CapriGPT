@@ -28,6 +28,8 @@ test('quiet notifications animate work bursts and retain completion, error and a
   assert.equal(mode, 'work');
   assert.equal(messages.length, 0);
   assert.equal(pulses, 1, 'Tool bursts must not repeatedly flash');
+  assert.equal(companion.statusMessage().kind, 'work');
+  assert.match(companion.statusMessage().line, /Codex is working/);
   send('waiting');
   assert.equal(mode, 'alert');
   assert.equal(messages.at(-1).hold, null);
@@ -35,12 +37,16 @@ test('quiet notifications animate work bursts and retain completion, error and a
   send('completed', [{ stage: 'waiting' }, { stage: 'completed' }]);
   assert.equal(mode, 'alert', 'Another task must not erase a pending approval');
   assert.equal(messages.length, 1);
+  assert.equal(companion.statusMessage().kind, 'alert');
+  assert.equal(companion.statusMessage().hold, null);
   send('working');
   send('tool_failed');
   assert.equal(messages.at(-1).kind, 'error');
+  assert.equal(companion.statusMessage().kind, 'error');
   send('completed');
   assert.equal(mode, 'idle');
   assert.equal(messages.at(-1).kind, 'done');
+  assert.equal(companion.statusMessage(), null, 'Completed turns should allow the idle status');
   assert.deepEqual(acts, ['hurt', 'hop']);
   assert.deepEqual(sounds, ['alert', 'error']);
   const count = messages.length;

@@ -96,6 +96,11 @@ app.whenReady().then(async () => {
       fs.mkdirSync(path.dirname(capture), { recursive: true });
       fs.writeFileSync(capture, (await win.webContents.capturePage(bounds)).toPNG());
     }
+    // This is the same status handler used when clicking Capri.
+    win.webContents.send('capri:command', { name: 'status' });
+    await pause(900);
+    assert.match(await js("document.querySelector('.panel__line').textContent"), /Codex is working|Codex está trabajando/);
+    assert.equal(await js("document.querySelector('#panel').dataset.kind"), 'work');
     await hook('PermissionRequest', { tool_name: 'Bash' });
     const waiting = await js('host.integrationStatus()');
     assert.equal(waiting.sessions.at(-1).stage, 'waiting');
