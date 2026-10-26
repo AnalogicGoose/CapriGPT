@@ -4,7 +4,7 @@ This is a local development branch of [mochiiwuff/capri-desktop](https://github.
 
 ## Start on this laptop
 
-Git, Node.js, Ollama, app dependencies, and the `llama3.2:3b` model are installed. Open Ollama first. Double-click `Start-CapriGPT.cmd`, or open PowerShell in this folder and run:
+Git, Node.js, Ollama, app dependencies, and the `llama3.2:3b` model are installed. Capri starts the installed local Ollama server in the background when she opens, except in Gaming mode. An already running server is reused. The model stays unloaded until you send a chat message. Double-click the desktop shortcut or `Start-CapriGPT.cmd`, or open PowerShell in this folder and run:
 
 ```powershell
 npm.cmd start

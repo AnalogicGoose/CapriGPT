@@ -47,6 +47,7 @@ let windowWatch = null;
 // the watcher only speaks when something changes: the overlay asks for this when it (re)loads
 let lastWindows = null;
 let chatModels = null; // the Ollama models, as last seen (null: Ollama not reached)
+let ollamaStartup = Promise.resolve();
 const chats = new Map(); // id -> AbortController of an answer being streamed
 
 const userSoundsDir = () => path.join(app.getPath('userData'), 'sounds');
@@ -408,6 +409,8 @@ function registerIpc() {
   // talking to her (chat.js): is Ollama there, with a model to talk with
   ipcMain.handle('chat:status', async () => {
     if (config.load().gamingMode) return { ok: false, error: 'Gaming mode: resume from the tray menu.' };
+    await ollamaStartup; // an early click should wait for the background server
+    if (config.load().gamingMode) return { ok: false, error: 'Gaming mode: resume from the tray menu.' };
     const models = await refreshModels();
     if (!models) return { ok: false, error: 'offline', installed: Boolean(ollamaRuntime.executable()) };
     if (!models.length) return { ok: false, error: 'nomodel' };
@@ -435,7 +438,7 @@ function registerIpc() {
   ipcMain.on('chat:stop', (_e, id) => chats.get(id)?.abort.abort());
   ipcMain.handle('chat:startOllama', async () => {
     if (config.load().gamingMode) return { ok: false, error: 'Resume from Gaming mode before starting Ollama.' };
-    // Only invoked by the explicit Start Ollama button; no startup inference.
+    // Manual retry from the Start Ollama button; starting the server never runs inference.
     return ollamaRuntime.start();
   });
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
@@ -574,6 +577,11 @@ function main() {
   if (process.platform === 'win32') app.setAppUserModelId('caprigpt.desktop');
 
   app.whenReady().then(() => {
+    // Prepare local chat without loading a model or delaying Capri's entrance.
+    // Existing Ollama servers are reused; absent installations keep the setup UI.
+    if (!config.load().gamingMode && ollamaRuntime.executable()) {
+      ollamaStartup = ollamaRuntime.start();
+    }
     serveProtocol();
     registerIpc();
     createOverlay();
@@ -608,7 +616,7 @@ function main() {
       fs.writeFileSync(target, JSON.stringify({ port: PORT, token: integrationToken }), { mode: 0o600 });
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
-    refreshModels(); // for her menu's model list
+    ollamaStartup.then(() => refreshModels()); // for her menu's model list
     screen.on('display-metrics-changed', fitOverlay);
     screen.on('display-added', () => { fitOverlay(); rebuildTray(); });
     screen.on('display-removed', () => { fitOverlay(); rebuildTray(); });
