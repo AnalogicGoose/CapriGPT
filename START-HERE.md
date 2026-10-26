@@ -1,6 +1,6 @@
 # CapriGPT: Windows local prototype
 
-This is a local development branch of [mochiiwuff/capri-desktop](https://github.com/mochiiwuff/capri-desktop), based on upstream commit `79a016c` (0.3.1). A GitHub-hosted fork has **not** been created yet. No changes have been pushed upstream.
+This is a local development branch of [mochiiwuff/capri-desktop](https://github.com/mochiiwuff/capri-desktop), based on upstream commit `79a016c` (0.3.1). The hosted fork is [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop), with the prototype on branch `codex/caprigpt-local`. No changes have been pushed to the original upstream repository.
 
 ## Start on this laptop
 
@@ -67,14 +67,18 @@ The code is MIT; preserve `LICENSE` and upstream attribution. **The character im
 
 See `ROADMAP.md` for optional OpenAI routing, billing, and ChatGPT/Codex integration. These cloud integrations are planned, not implemented.
 
-## Finish the GitHub fork
+## GitHub fork
 
-In your signed-in browser, open upstream and choose **Fork**, retaining attribution. Then point this checkout at your fork (replace YOUR-LOGIN with your actual GitHub login):
+The hosted fork is [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop). The local prototype branch tracks `origin/codex/caprigpt-local`. `upstream` points to the original mochiiwuff repository.
+
+To obtain this prototype on another PC:
 
 ```powershell
-git remote rename origin upstream
-git remote add origin https://github.com/YOUR-LOGIN/capri-desktop.git
-git push -u origin codex/caprigpt-local
+git clone --branch codex/caprigpt-local https://github.com/Chocoyito1/capri-desktop.git CapriGPT
+cd CapriGPT
+npm.cmd ci
+ollama pull llama3.2:3b
+npm.cmd start
 ```
 
-This publishes the branch and inherited assets; review the rights note before doing so. Browser automation was blocked during this session, so no hosted fork or push is claimed.
+The fork retains upstream attribution and rights notices. No installer or release has been published.

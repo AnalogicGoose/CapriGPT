@@ -38,4 +38,4 @@ Resolve character asset permissions or replace them with licensed assets before 
 - `src/renderer/js/acting.js`, `capri.js`, `sprite.js`, `fx.js`: existing animations and rendering.
 - `hooks/`, `scripts/install-hooks.js`: legacy optional Claude integration.
 
-Hosted fork remains pending. Work is on the local `codex/caprigpt-local` branch, based on upstream `79a016c`.
+Hosted fork: [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop). The prototype is pushed to `codex/caprigpt-local`, based on upstream `79a016c`.
