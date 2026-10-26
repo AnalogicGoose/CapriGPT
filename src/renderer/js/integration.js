@@ -26,6 +26,7 @@ export class IntegrationCompanion {
     return `Codex lifecycle notifications have been received locally. These are observed events, not a continuous live view. Last observed states: ${tasks.map((event) => `${event.project}: ${event.stage}${event.tool ? ` (${event.tool})` : ''}`).join('; ') || 'session ready'}. Regular ChatGPT conversations are not connected. No prompts, answers, commands or files were received.`;
   }
   handle(event) {
+    this.panel.setTicker(null);
     const es = this.brain.lang === 'es';
     const label = event.demo ? 'CODEX · TEST' : 'CODEX';
     const lines = es ? {
@@ -44,8 +45,7 @@ export class IntegrationCompanion {
     if (event.stage === 'working') {
       this.capri.pulse();
       this.capri.setMode('work');
-      this.panel.setTicker({ verb: label, target: event.tool || event.project });
-      // Tool traffic stays in the ticker and does not replace an open conversation.
+      // Tool traffic animates Capri quietly instead of adding a floating status label.
       if (event.tool) return;
     } else if (event.stage === 'waiting') {
       this.capri.setMode('alert');
