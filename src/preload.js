@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('host', {
   openClaudeFolder: () => ipcRenderer.invoke('guide:claudeFolder'),
   copyImage: (rect) => ipcRenderer.invoke('panel:copy', rect),
   chatStatus: () => ipcRenderer.invoke('chat:status'),
+  startOllama: () => ipcRenderer.invoke('chat:startOllama'),
   chatSend: (request) => ipcRenderer.invoke('chat:send', request),
   chatHandoff: (text) => ipcRenderer.invoke('chat:handoff', text),
   chatStop: (id) => ipcRenderer.send('chat:stop', id),

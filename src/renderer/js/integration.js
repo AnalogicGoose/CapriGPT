@@ -9,6 +9,7 @@ export class IntegrationCompanion {
     this.snapshot = { lastSeen: null, sessions: [] };
     host.onIntegrationState((snapshot) => {
       this.snapshot = snapshot;
+      if (this.panel.current?.chat) this.panel.setActivity(this.activityLine());
       if (snapshot.resumed) {
         const waiting = this.visibleSessions().find((event) => event.stage === 'waiting');
         if (waiting) this.handle(waiting);
@@ -21,6 +22,7 @@ export class IntegrationCompanion {
     host.integrationStatus().then((snapshot) => { this.snapshot = snapshot; }).catch(() => {});
     brain.integrationContext = () => this.context();
     brain.integrationStatusMessage = () => this.statusMessage();
+    brain.integrationActivity = () => this.activityLine();
   }
   context() {
     if (!this.snapshot.lastSeen) return 'Codex notification hooks are available but no real Codex event has been received in this Capri run. Current Codex activity is unknown. Regular ChatGPT conversations are not connected.';
@@ -38,7 +40,15 @@ export class IntegrationCompanion {
       kind: event.stage === 'waiting' ? 'alert' : event.stage === 'tool_failed' ? 'error' : 'work',
       badge: event.demo ? 'CODEX · TEST' : 'CODEX', tag: event.project,
       line: this.lines()[event.stage], hold: event.stage === 'waiting' ? null : 6000,
+      ...(event.stage !== 'waiting' && this.brain.onTalk ? {
+        actions: [{ id: 'talk', label: this.brain.t.chat.talk }], onAction: () => this.brain.onTalk(),
+      } : {}),
     };
+  }
+  activityLine() {
+    return this.statusMessage()?.line || (this.brain.lang === 'es'
+      ? this.snapshot.lastSeen ? 'Codex: sin tarea activa.' : 'Codex: aún sin actividad recibida.'
+      : this.snapshot.lastSeen ? 'Codex: no active task.' : 'Codex: no activity received yet.');
   }
   lines() {
     const es = this.brain.lang === 'es';

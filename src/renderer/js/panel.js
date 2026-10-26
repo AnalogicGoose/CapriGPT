@@ -39,6 +39,7 @@ export class Panel {
     this.log = panel.querySelector('.panel__log');
     this.tag = panel.querySelector('.panel__tag');
     this.state = panel.querySelector('.panel__state');
+    this.activity = panel.querySelector('.panel__activity');
     this.tickerVerb = ticker.querySelector('.ticker__verb');
     this.tickerTarget = ticker.querySelector('.ticker__target');
     this.current = null;
@@ -99,6 +100,11 @@ export class Panel {
   // chat: a line to type to her, { placeholder, send, close, noteTag, note }; onSend(text) gets
   //       what you typed
   // onLeave: () => void, when this message goes (closed, timed out or replaced)
+  setActivity(text) {
+    this.activity.textContent = text || '';
+    this.activity.hidden = !text;
+  }
+
   say(msg) {
     const cur = this.current;
     if (cur && this.visible && cur.kind !== msg.kind && PRIORITY[cur.kind] > PRIORITY[msg.kind] && performance.now() - cur.at < 2600) {
@@ -122,6 +128,7 @@ export class Panel {
     this.setFace(msg.face || KIND_FACE[msg.kind] || 'grin');
     this.tag.textContent = msg.tag || '';
     this.state.textContent = msg.badge || this.labels.state[msg.kind] || '';
+    this.setActivity(msg.activity);
     this.quote.textContent = msg.quote || '';
     this.quote.hidden = !msg.quote;
     this.reply.textContent = msg.reply || '';

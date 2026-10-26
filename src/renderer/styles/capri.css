@@ -621,6 +621,13 @@ body {
 
 .panel.is-chat .panel__meta { order: -2; }
 
+.panel__activity {
+  color: var(--accent);
+  font: 500 10px/1.5 'JetBrains Mono', monospace;
+  margin: 0 0 8px;
+}
+.panel.is-chat .panel__activity { order: -2; }
+
 .panel.is-chat .panel__quote {
   order: -1;
   margin: 0 0 8px;

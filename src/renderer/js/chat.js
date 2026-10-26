@@ -46,19 +46,36 @@ export class Chat {
     capri.wake();
     const status = await host.chatStatus();
     if (!status.ok) {
+      if (!['offline', 'nomodel'].includes(status.error)) {
+        this.panel.say({ kind: 'info', line: status.error, hold: 6500 });
+        return;
+      }
       // no Ollama, or nothing to talk with yet: what to do about it
       const offline = status.error === 'offline';
+      const installed = offline && status.installed;
+      const es = this.brain.lang === 'es';
       capri.perform('curious', capri.towardCenter());
       this.panel.say({
         kind: 'info',
         face: 'aside',
         guide: true,
         line: offline ? t.offline : t.noModel,
-        quote: offline ? t.offlineHow : t.noModelHow,
+        quote: installed ? (es ? 'Ollama está instalado, pero no está funcionando. Inícialo para hablar conmigo.' : 'Ollama is installed but is not running. Start it to chat with me.') : offline ? t.offlineHow : t.noModelHow,
         actions: offline
-          ? [{ id: 'get', label: t.getOllama, primary: true }, { id: 'ok', label: t.ok }]
+          ? [{ id: installed ? 'start' : 'get', label: installed ? (es ? 'Iniciar Ollama' : 'Start Ollama') : t.getOllama, primary: true }, { id: 'retry', label: es ? 'Reintentar' : 'Retry' }, { id: 'ok', label: t.ok }]
           : [{ id: 'ok', label: t.ok, primary: true }],
-        onAction: (id) => {
+        onAction: async (id) => {
+          if (id === 'start') {
+            this.panel.setActions([]);
+            const result = await host.startOllama();
+            if (!result.ok) {
+              this.panel.say({ kind: 'error', line: result.error, hold: 8000 });
+              return;
+            }
+            await this.start();
+            return;
+          }
+          if (id === 'retry') { await this.start(); return; }
           if (id === 'get') host.openOllama();
           this.panel.hide();
         },
@@ -73,6 +90,7 @@ export class Chat {
       face: 'look',
       badge: t.badge,
       tag: status.model.replace(/:latest$/, ''),
+      activity: this.brain.integrationActivity?.(),
       line: pick(this.history.length ? t.again : t.hello),
       chat: {
         placeholder: t.placeholder,

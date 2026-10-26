@@ -14,6 +14,7 @@ const { TRAY, LANGS } = require('./labels');
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const ollama = require('./ollama');
+const ollamaRuntime = require('./ollama-runtime');
 const codexHooks = require('../../scripts/install-codex-hooks');
 const { CodexEvents } = require('./codex-events');
 const { connectionFile } = require('../../hooks/caprigpt-codex-hook');
@@ -408,7 +409,7 @@ function registerIpc() {
   ipcMain.handle('chat:status', async () => {
     if (config.load().gamingMode) return { ok: false, error: 'Gaming mode: resume from the tray menu.' };
     const models = await refreshModels();
-    if (!models) return { ok: false, error: 'offline' };
+    if (!models) return { ok: false, error: 'offline', installed: Boolean(ollamaRuntime.executable()) };
     if (!models.length) return { ok: false, error: 'nomodel' };
     return { ok: true, model: pickModel() };
   });
@@ -432,6 +433,11 @@ function registerIpc() {
     }
   });
   ipcMain.on('chat:stop', (_e, id) => chats.get(id)?.abort.abort());
+  ipcMain.handle('chat:startOllama', async () => {
+    if (config.load().gamingMode) return { ok: false, error: 'Resume from Gaming mode before starting Ollama.' };
+    // Only invoked by the explicit Start Ollama button; no startup inference.
+    return ollamaRuntime.start();
+  });
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
   // closing an app you asked her to close, once you've clicked to confirm (apps.js)
   const appInfo = (app) => app && { name: app.process, label: app.label };

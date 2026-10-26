@@ -10,7 +10,7 @@ Git, Node.js, Ollama, app dependencies, and the `llama3.2:3b` model are installe
 npm.cmd start
 ```
 
-Keep the terminal open. Right-click Capri or her tray icon → **Talk to her**. Type your message and press Enter. The model runs locally; the first reply may take longer while loading. Escape closes chat and cancels an active reply. Quit from her tray menu.
+The desktop shortcut opens Capri without a terminal window. If you instead run `npm start` from a terminal, keep that terminal open. Right-click Capri or her tray icon → **Talk to her**. You can also click her during Codex work and choose **Talk to me**. The chat shows a separate Codex activity line that updates while you talk. Type your message and press Enter. The model runs locally; the first reply may take longer while loading. Escape closes chat and cancels an active reply. Quit from her tray menu.
 
 ## Install again on another Windows PC
 
@@ -47,7 +47,7 @@ The local event bridge remains on `127.0.0.1:47823` and rejects browser Origin h
 ## Troubleshooting
 
 - No model: open Ollama and run `ollama pull llama3.2:3b`, then reopen chat.
-- Cannot reach Ollama: check `http://127.0.0.1:11434/api/tags` and remove a remote `OLLAMA_HOST` setting.
+- Cannot reach Ollama: if installed in the standard Windows location, Capri offers **Start Ollama**. Click it to start the local server and reopen chat; this does not preload a model. **Retry** checks a service you started yourself. Otherwise open Ollama normally, check `http://127.0.0.1:11434/api/tags`, and remove a remote `OLLAMA_HOST` setting. Gaming mode blocks the Start button.
 - Capri absent: check the tray's Gaming mode setting. Also try Ctrl+Alt+C for the biochip state.
 - Port occupied: quit another Capri instance. For development, set `$env:CAPRI_PORT='47825'` before starting; hooks must use the same port.
 - A very slow or failed first reply: inspect Ollama's logs and update Ollama/NVIDIA drivers from official sources. No automatic paid fallback exists.
