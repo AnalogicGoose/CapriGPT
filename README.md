@@ -1,3 +1,5 @@
+> **CapriGPT local prototype:** Start with [START-HERE.md](START-HERE.md) for Windows setup, safety, gaming mode, and licensing. [ROADMAP.md](ROADMAP.md) covers planned OpenAI/Codex integrations. The upstream README below describes the original Capri application.
+
 **English** · [Français](README.fr.md)
 
 # Capri

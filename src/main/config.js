@@ -5,6 +5,8 @@ const path = require('node:path');
 const { app } = require('electron');
 
 const DEFAULTS = {
+  gamingMode: false,
+  desktopActions: false,
   scale: 0.6,        // sprite scale, 0.6 ≈ 250px tall
   muted: false,
   volume: 0.7,
@@ -15,7 +17,7 @@ const DEFAULTS = {
   visible: true,
   welcomed: false,   // she has introduced herself (her welcome panel)
   linked: false,     // a Claude Code event has reached her at least once
-  chatModel: null,   // the Ollama model she talks with (null: the first one installed)
+  chatModel: 'llama3.2:3b',
 };
 
 let cache = null;

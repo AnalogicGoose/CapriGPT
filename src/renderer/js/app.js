@@ -388,11 +388,15 @@ async function boot() {
   // entrance: her face big in the corner says hi, then she dives down to her spot
   // (put away last time: she starts in her biochip)
   if (config.visible === false) capri.stowNow();
-  else if (intro) await capri.intro(capri.spot('post'));
+  else if (intro && !config.welcomed) await capri.intro(capri.spot('post'));
   else await capri.materialize(capri.spot('post'));
   const hooks = await host.hooksStatus();
-  if (!config.welcomed || !hooks.installed) guide.welcome();
+  if (!config.welcomed) {
+    host.setConfig({ welcomed: true });
+    panel.say({ kind: 'info', line: 'CapriGPT is local. Right-click me → Talk to her. Gaming mode and app-closing permissions are in the menu.', hold: 12000 });
+  }
   else panel.say({ kind: 'info', line: pick(brain.t.online), hold: 4000 });
+  document.documentElement.dataset.caprigptReady = 'true';
 
   // In the evening, after a real day's work, she brings you her report card once, on her own,
   // at a quiet moment.

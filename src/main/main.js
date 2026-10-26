@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
-  clipboard, ClipboardItem,
+  clipboard, ClipboardItem, dialog,
 } = require('electron');
 
 const config = require('./config');
@@ -19,6 +19,8 @@ const demoSteps = require('../../scripts/demo-sequence');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
+// Keep this prototype's preferences separate from the original app.
+app.setPath('userData', path.join(app.getPath('appData'), 'CapriGPT'));
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 const CLAUDE_CODE_HELP = 'https://code.claude.com/docs/en/quickstart';
@@ -89,7 +91,7 @@ function createOverlay() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      backgroundThrottling: false,
+      backgroundThrottling: true,
       autoplayPolicy: 'no-user-gesture-required',
     },
   });
@@ -98,7 +100,7 @@ function createOverlay() {
   overlay.setIgnoreMouseEvents(true, { forward: true });
   overlay.loadURL('capri://app/src/renderer/index.html');
   // always shown: put away, she's still there as her biochip in the corner
-  overlay.once('ready-to-show', () => overlay.showInactive());
+  overlay.once('ready-to-show', () => { if (!config.load().gamingMode) overlay.showInactive(); });
   overlay.webContents.on('render-process-gone', (_e, details) => {
     console.error('[capri] renderer gone:', details.reason);
   });
@@ -112,7 +114,43 @@ function createOverlay() {
 }
 
 function sendCommand(name, payload = {}) {
+  if (config.load().gamingMode) return;
   overlay?.webContents.send('capri:command', { name, ...payload });
+}
+
+let gamingTransition = false;
+async function setGamingMode(on) {
+  if (gamingTransition) return;
+  gamingTransition = true;
+  try {
+    updateConfig({ gamingMode: on });
+    if (on) {
+      clearTimeout(demoTimer);
+      const pending = [...chats.values()];
+      pending.forEach(({ abort }) => abort.abort());
+      overlay?.setFocusable(false);
+      overlay?.hide();
+      windowWatch?.stop();
+      windowWatch = null;
+      // Wait for cancelled requests to finish before sending the unload request.
+      await Promise.allSettled(pending.map(({ done }) => done));
+      try { await ollama.unload(pickModel()); }
+      catch (err) {
+        await dialog.showMessageBox({ type: 'warning', message: 'Gaming mode is on, but model unload failed.', detail: `${err.message}\nCheck ollama ps before gaming.` });
+      }
+    } else {
+      overlay?.showInactive();
+      watchWindows();
+    }
+  } finally { gamingTransition = false; rebuildTray(); }
+}
+
+function watchWindows() {
+  if (windowWatch || config.load().gamingMode) return;
+  windowWatch = startWindowWatch({ overlay, onUpdate: (data) => {
+    lastWindows = data;
+    overlay?.webContents.send('windows:update', data);
+  } });
 }
 
 // Ctrl+Alt+C: she folds herself away into her biochip in the corner, or comes back out of it.
@@ -203,7 +241,12 @@ function rebuildTray() {
     { label: t.demo, click: playDemo },
     { label: t.help, click: () => sendCommand('welcome') },
     { label: t.report, click: () => sendCommand('report') },
-    { label: t.talk, click: () => sendCommand('chat') },
+    { label: 'CapriGPT — Local Ollama only', enabled: false },
+    { label: t.talk, enabled: !cfg.gamingMode, click: () => sendCommand('chat') },
+    { label: 'Gaming mode — pause AI and hide Capri', type: 'checkbox', checked: cfg.gamingMode,
+      enabled: !gamingTransition, click: (item) => setGamingMode(item.checked) },
+    { label: 'Allow app closing (always asks confirmation)', type: 'checkbox', checked: cfg.desktopActions,
+      click: (item) => updateConfig({ desktopActions: item.checked }) },
     { label: cfg.visible ? t.hide : t.show, accelerator: 'Ctrl+Alt+C', click: () => toggleVisible() },
     { type: 'separator' },
     {
@@ -305,7 +348,7 @@ async function refreshModels() {
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(ROOT, 'assets', 'icons', 'tray.png'));
   tray = new Tray(icon);
-  tray.setToolTip('Capri');
+  tray.setToolTip('CapriGPT — local only');
   tray.on('click', () => sendCommand('status'));
   rebuildTray();
 }
@@ -332,16 +375,20 @@ function registerIpc() {
   ipcMain.handle('windows:get', () => lastWindows);
   // talking to her (chat.js): is Ollama there, with a model to talk with
   ipcMain.handle('chat:status', async () => {
+    if (config.load().gamingMode) return { ok: false, error: 'Gaming mode: resume from the tray menu.' };
     const models = await refreshModels();
     if (!models) return { ok: false, error: 'offline' };
     if (!models.length) return { ok: false, error: 'nomodel' };
-    ollama.warm(pickModel()); // loading while you type your first message
     return { ok: true, model: pickModel() };
   });
   // her answer, streamed to the overlay piece by piece as `chat:delta`
   ipcMain.handle('chat:send', async (_e, { id, messages }) => {
+    if (config.load().gamingMode) return { ok: false, error: 'Gaming mode is on' };
+    if (chats.size) return { ok: false, error: 'One local reply at a time' };
     const abort = new AbortController();
-    chats.set(id, abort);
+    let finish;
+    const done = new Promise((resolve) => { finish = resolve; });
+    chats.set(id, { abort, done });
     try {
       const send = (text) => overlay?.webContents.send('chat:delta', { id, text });
       const text = await ollama.chat({ model: pickModel(), messages }, send, abort.signal);
@@ -350,15 +397,18 @@ function registerIpc() {
       return { ok: false, error: abort.signal.aborted ? 'stopped' : err.message };
     } finally {
       chats.delete(id);
+      finish();
     }
   });
-  ipcMain.on('chat:stop', (_e, id) => chats.get(id)?.abort());
+  ipcMain.on('chat:stop', (_e, id) => chats.get(id)?.abort.abort());
   ipcMain.on('chat:ollama', () => shell.openExternal(OLLAMA_SITE));
   // closing an app you asked her to close, once you've clicked to confirm (apps.js)
   const appInfo = (app) => app && { name: app.process, label: app.label };
-  ipcMain.handle('apps:list', async () => (await apps.list().catch(() => [])).map(appInfo));
-  ipcMain.handle('apps:find', async (_e, wanted) => appInfo(await apps.find(wanted).catch(() => null)));
-  ipcMain.handle('apps:close', (_e, { name, force }) => apps.close(name, { force }).catch((err) => ({ error: err.message })));
+  ipcMain.handle('apps:list', async () => config.load().desktopActions && !config.load().gamingMode
+    ? (await apps.list().catch(() => [])).map(appInfo) : []);
+  ipcMain.handle('apps:find', async (_e, wanted) => config.load().desktopActions && !config.load().gamingMode
+    ? appInfo(await apps.find(wanted).catch(() => null)) : null);
+  ipcMain.handle('apps:close', require('./action-confirmation').createCloseHandler({ config, apps, dialog }));
   // typing to her: the overlay takes the keyboard while the chat is open, and gives it back after
   ipcMain.on('overlay:focus', (_e, on) => {
     if (!overlay) return;
@@ -484,23 +534,17 @@ function main() {
     return;
   }
   app.on('second-instance', () => sendCommand('status'));
-  if (process.platform === 'win32') app.setAppUserModelId('capri.desktop');
+  if (process.platform === 'win32') app.setAppUserModelId('caprigpt.desktop');
 
   app.whenReady().then(() => {
     serveProtocol();
     registerIpc();
     createOverlay();
     createTray();
-    windowWatch = startWindowWatch({
-      overlay,
-      onUpdate: (data) => {
-        lastWindows = data;
-        overlay?.webContents.send('windows:update', data);
-      },
-    });
+    watchWindows();
     createBridge({
       port: PORT,
-      onEvent: (evt) => overlay?.webContents.send('claude:event', evt),
+      onEvent: (evt) => { if (!config.load().gamingMode) overlay?.webContents.send('claude:event', evt); },
       onDebug: DEV ? debugHandler : null,
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
