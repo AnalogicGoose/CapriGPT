@@ -340,6 +340,7 @@ export class Brain {
 
   // Describe only received events; do not pretend the planned Codex feed is connected.
   context() {
+    if (this.integrationContext) return this.integrationContext();
     const busy = this.busySessions.sort((a, b) => b.seen - a.seen);
     const now = busy.length
       ? busy.map((s) => {

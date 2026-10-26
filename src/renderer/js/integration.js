@@ -1,0 +1,58 @@
+// Read-only notifications. This controller has no action/approval tool or LLM calls.
+export class IntegrationCompanion {
+  constructor({ capri, panel, voice, host, brain }) {
+    Object.assign(this, { capri, panel, voice, host, brain });
+    this.snapshot = { lastSeen: null, sessions: [] };
+    host.onIntegrationState((snapshot) => {
+      this.snapshot = snapshot;
+      if (snapshot.resumed) {
+        const waiting = snapshot.sessions.find((event) => event.stage === 'waiting');
+        if (waiting) this.handle(waiting);
+        else if (!snapshot.sessions.some((event) => ['working', 'tool_failed'].includes(event.stage))) {
+          this.panel.clearKind('alert'); this.panel.setTicker(null); this.capri.setMode('idle');
+        }
+      }
+    });
+    host.onIntegrationEvent((event) => this.handle(event));
+    host.integrationStatus().then((snapshot) => { this.snapshot = snapshot; }).catch(() => {});
+    brain.integrationContext = () => this.context();
+  }
+  context() {
+    if (!this.snapshot.lastSeen) return 'Codex notification hooks are available but no real Codex event has been received in this Capri run. Current Codex activity is unknown. Regular ChatGPT conversations are not connected.';
+    const tasks = this.snapshot.sessions.filter((event) => !event.demo && event.stage !== 'ready').slice(-6);
+    return `Codex lifecycle notifications have been received locally. These are observed events, not a continuous live view. Last observed states: ${tasks.map((event) => `${event.project}: ${event.stage}${event.tool ? ` (${event.tool})` : ''}`).join('; ') || 'session ready'}. Regular ChatGPT conversations are not connected. No prompts, answers, commands or files were received.`;
+  }
+  handle(event) {
+    const es = this.brain.lang === 'es';
+    const label = event.demo ? 'CODEX · TEST' : 'CODEX';
+    const lines = es ? {
+      ready: 'La conexión de Codex está lista.', working: 'Codex está trabajando.', waiting: 'Codex necesita tu aprobación. Revísala en Codex.',
+      tool_failed: 'Una herramienta de Codex informó un error.', completed: 'Codex terminó su turno.', interrupted: 'El turno de Codex fue interrumpido.', closed: 'La sesión de Codex terminó.',
+    } : {
+      ready: 'Codex notifications are connected.', working: 'Codex is working.', waiting: 'Codex needs your approval. Review it in Codex.',
+      tool_failed: 'A Codex tool reported an error.', completed: 'Codex finished its turn.', interrupted: 'The Codex turn was interrupted.', closed: 'The Codex session ended.',
+    };
+    const active = this.snapshot.sessions.some((entry) => ['working', 'waiting', 'tool_failed'].includes(entry.stage));
+    if (event.stage !== 'waiting' && this.snapshot.sessions.some((entry) => entry.stage === 'waiting')) {
+      this.capri.setMode('alert');
+      return; // another turn still needs its approval prompt
+    }
+    if (event.stage !== 'waiting' && this.panel.current?.badge?.startsWith('CODEX')) this.panel.clearKind('alert');
+    if (event.stage === 'working') {
+      this.capri.pulse();
+      this.capri.setMode('work');
+      this.panel.setTicker({ verb: label, target: event.tool || event.project });
+      // Tool traffic stays in the ticker and does not replace an open conversation.
+      if (event.tool) return;
+    } else if (event.stage === 'waiting') {
+      this.capri.setMode('alert');
+      this.voice.play('alert');
+    } else {
+      if (!active) { this.capri.setMode('idle'); this.panel.setTicker(null); }
+      if (event.stage === 'completed' && !active) this.capri.perform('hop');
+      if (event.stage === 'tool_failed') { this.capri.hurt(); this.voice.play('error'); }
+    }
+    const kind = event.stage === 'waiting' ? 'alert' : event.stage === 'tool_failed' ? 'error' : event.stage === 'completed' ? 'done' : event.stage === 'working' ? 'work' : 'info';
+    this.panel.say({ kind, badge: label, tag: event.project, line: lines[event.stage], hold: event.stage === 'waiting' ? null : 6500 });
+  }
+}

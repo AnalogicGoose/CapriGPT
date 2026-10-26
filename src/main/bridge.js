@@ -4,6 +4,7 @@
 // we hand it to the overlay. Bound to 127.0.0.1 only.
 
 const http = require('node:http');
+const { timingSafeEqual } = require('node:crypto');
 
 const MAX_BODY = 512 * 1024;
 
@@ -37,13 +38,24 @@ function readJson(req) {
   });
 }
 
-function createBridge({ port, onEvent, onDebug }) {
+function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent }) {
   const server = http.createServer(async (req, res) => {
     // Browsers always send an Origin header on cross-site requests; hooks never do.
     // Refusing those keeps random web pages from puppeting Capri.
     if (req.headers.origin) return send(res, 403, { ok: false });
 
     const url = new URL(req.url, 'http://127.0.0.1');
+
+    if (req.method === 'POST' && url.pathname === '/integration/codex') {
+      const supplied = Buffer.from(String(req.headers.authorization || ''));
+      const expected = Buffer.from(`Bearer ${integrationToken || ''}`);
+      if (!integrationToken || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return send(res, 403, { ok: false });
+      try {
+        const event = await readJson(req);
+        const accepted = onCodexEvent?.(event);
+        return send(res, 200, { ok: true, accepted: Boolean(accepted) });
+      } catch (error) { return send(res, 400, { ok: false, error: error.message }); }
+    }
 
     if (req.method === 'GET' && url.pathname === '/health') {
       return send(res, 200, { ok: true, name: 'capri', pid: process.pid });

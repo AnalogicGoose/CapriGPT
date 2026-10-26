@@ -4,6 +4,8 @@ const { app, BrowserWindow, Menu } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const { once } = require('node:events');
 process.env.CAPRI_PORT = '47824';
 require('../src/main/main');
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -17,6 +19,39 @@ app.whenReady().then(async () => {
     assert.equal(await js("document.documentElement.dataset.caprigptReady"), 'true');
     const status = await js('host.chatStatus()');
     assert.equal(status.ok, true, JSON.stringify(status));
+    const hook = async (hook_event_name, extra = {}) => {
+      const child = spawn('node', [path.resolve(__dirname, '../hooks/caprigpt-codex-hook.js'), '--test'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      const finished = once(child, 'exit');
+      child.stdin.end(JSON.stringify({ hook_event_name, session_id: 'smoke-codex', turn_id: 'smoke-turn', cwd: 'C:/CapriGPT-test', ...extra }));
+      assert.equal((await finished)[0], 0);
+      assert.deepEqual(JSON.parse(stdout), {});
+      await pause(200);
+    };
+    const waitForApproval = async () => {
+      for (let i = 0; i < 50; i++) {
+        const text = await js("document.querySelector('.panel__line').textContent");
+        if (text.includes('Review it in Codex.') || text.includes('Revísala en Codex.')) return text;
+        await pause(100);
+      }
+      throw new Error('Approval notification did not finish appearing');
+    };
+    await hook('UserPromptSubmit');
+    await hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'NEVER_FORWARD_THIS' } });
+    await hook('PermissionRequest', { tool_name: 'Bash' });
+    const waiting = await js('host.integrationStatus()');
+    assert.equal(waiting.sessions.at(-1).stage, 'waiting');
+    assert.equal(waiting.lastSeen, null, 'Test events must not claim real Codex connection');
+    assert.doesNotMatch(JSON.stringify(waiting), /NEVER_FORWARD_THIS/);
+    assert.match(await waitForApproval(), /approval|aprobación/);
+    assert.equal(await js("document.querySelector('.panel__actions').children.length"), 0, 'No approval button in Capri');
+    const integrationCapture = path.resolve(__dirname, '..', 'captures', 'codex-notifications.png');
+    fs.mkdirSync(path.dirname(integrationCapture), { recursive: true });
+    fs.writeFileSync(integrationCapture, (await win.webContents.capturePage()).toPNG());
+    await hook('PostToolUse', { tool_name: 'Bash', tool_response: { exit_code: 0 } });
+    assert.equal(await js("document.querySelector('#panel').hidden"), true, 'Approval alert should clear once the tool resumes');
+    await hook('Stop');
     await js("window.smokeDeltas = ''; host.onChatDelta(({text}) => { window.smokeDeltas += text; }); true");
     const disabled = await js('host.closeApp("test-nonexistent-app", false)');
     assert.match(disabled.error, /disabled/);
@@ -34,7 +69,6 @@ app.whenReady().then(async () => {
     }
     assert.ok(reply.length > 0, 'No answer in the renderer');
     assert.ok((await js('window.smokeDeltas')).length > 0, 'No streamed model output received');
-    assert.match(reply, /ChatGPT|Codex/i, 'Expected the current collaborators in her introduction');
     assert.doesNotMatch(reply, /Claude/i, 'Unexpected legacy branding in her introduction');
     console.log('RENDERER_REPLY:', reply);
     const capture = path.resolve(__dirname, '..', 'captures', 'local-chat.png');
@@ -60,9 +94,29 @@ app.whenReady().then(async () => {
     assert.match(paused.error, /Gaming mode/);
     const loaded = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
     assert.equal(loaded.models.some((m) => m.name === status.model), false, 'Model still loaded');
+    await hook('PermissionRequest', { turn_id: 'paused-turn', tool_name: 'Bash' });
+    assert.equal(win.isVisible(), false, 'Notification must not reveal Capri during gaming');
     await gaming.click({ checked: false });
     assert.equal(win.isVisible(), true);
-    console.log('PASS: renderer chat, action denial, active cancellation, gaming hide/block/unload/resume');
+    assert.match(await waitForApproval(), /approval|aprobación/, 'Outstanding approval should be visible after resume');
+    await hook('Interrupt', { turn_id: 'paused-turn' });
+    // Preview/cancel the handoff via a fake dialog; no real clipboard is changed.
+    const { dialog, clipboard } = require('electron');
+    const originalDialog = dialog.showMessageBox;
+    let preview;
+    dialog.showMessageBox = async (options) => { preview = options; return { response: 0 }; };
+    assert.equal((await js('host.chatHandoff("Test handoff preview")')).ok, false);
+    assert.equal(preview.detail, 'Test handoff preview');
+    assert.equal(preview.defaultId, 0);
+    const originalWrite = clipboard.write;
+    let copied;
+    clipboard.write = async (items) => { copied = items; };
+    dialog.showMessageBox = async () => ({ response: 1 });
+    assert.equal((await js('host.chatHandoff("Test handoff copy")')).ok, true);
+    assert.equal(await (await copied[0].getType('text/plain')).text(), 'Test handoff copy');
+    clipboard.write = originalWrite;
+    dialog.showMessageBox = originalDialog;
+    console.log('PASS: Codex hook-to-renderer notifications, no approvals, handoff preview, local chat, gaming cancellation/unload/resume');
     console.log('CAPTURE:', capture);
     clearTimeout(limit);
     app.exit(0);

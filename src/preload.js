@@ -9,6 +9,9 @@ const on = (channel) => (fn) => {
 };
 
 contextBridge.exposeInMainWorld('host', {
+  onIntegrationEvent: on('integration:event'),
+  onIntegrationState: on('integration:state'),
+  integrationStatus: () => ipcRenderer.invoke('integration:status'),
   onClaudeEvent: on('claude:event'),
   onCommand: on('capri:command'),
   onConfig: on('capri:config'),
@@ -31,6 +34,7 @@ contextBridge.exposeInMainWorld('host', {
   copyImage: (rect) => ipcRenderer.invoke('panel:copy', rect),
   chatStatus: () => ipcRenderer.invoke('chat:status'),
   chatSend: (request) => ipcRenderer.invoke('chat:send', request),
+  chatHandoff: (text) => ipcRenderer.invoke('chat:handoff', text),
   chatStop: (id) => ipcRenderer.send('chat:stop', id),
   onChatDelta: on('chat:delta'),
   openOllama: () => ipcRenderer.send('chat:ollama'),

@@ -14,15 +14,13 @@ Before any cloud send, show the destination, selected model, and exact outgoing 
 
 Keep normal casual conversation local. Offer cloud routing as a visible user choice for a specific difficult request. Gaming mode should block all inference in the initial design, including cloud calls, until the user explicitly changes that policy.
 
-## 3. ChatGPT/Codex integration
+## 3. ChatGPT/Codex integration (first connection built)
 
-First implement a manual handoff: copy a user-approved prompt or summary for use in ChatGPT/Codex. Do not read browser sessions, reuse cookies, extract the desktop app's tokens, or promise access to ChatGPT memories/conversation history.
+Implemented: local Codex lifecycle notifications through supported hooks, a separate provider-labelled renderer, authenticated loopback delivery, metadata-only payloads, and a user-previewed copy/paste handoff for ChatGPT or Codex. The definitions are installed on this laptop; their trust review and the first genuine desktop lifecycle event remain pending. See [CODEX-CONNECTION.md](CODEX-CONNECTION.md).
 
-Next, prototype a separate opt-in Codex adapter using documented [Codex app-server](https://learn.chatgpt.com/docs/app-server) events and approval messages. Map task start, progress, waiting-for-user, failure and completion to existing Capri animations. Start with read-only notifications. Label Codex events distinctly rather than pretending they are Claude events. Strip file content and command output unless explicitly needed and approved. Never interpret a model's text as authorization.
+Regular ChatGPT chats are not automatically observed, and no paid model routing is enabled. Keep native approvals in Codex. The Codex app-server is a possible later route for a dedicated embedded client; it is not needed for the notification-only connection and no desktop control socket is assumed.
 
-Codex supports ChatGPT sign-in and API-key authentication; these have different billing and usage rules. Use its supported authentication flow instead of handling credentials inside Capri. Recheck current [Sign in with ChatGPT integration guidance](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt) before implementing broader subscription-powered app features. Availability and eligibility must be verified; no such integration is wired in this milestone.
-
-Any future desktop tool needs a narrow allowlist, a concrete preview, a fresh confirmation bound to the exact action and target, expiry, and a cancellation path. Preserve native Codex approval behavior. Do not connect model output directly to shell execution. File writes, launching programs, browser actions, and external messages remain separate future scopes.
+Future desktop tools need a narrow allowlist, exact previews, fresh confirmation bound to the action and target, expiry, and cancellation. Model text is never authorization.
 
 ## 4. Distribution and gaming polish
 
@@ -39,3 +37,5 @@ Resolve character asset permissions or replace them with licensed assets before 
 - `hooks/`, `scripts/install-hooks.js`: legacy optional Claude integration.
 
 Hosted fork: [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop). The prototype is pushed to `codex/caprigpt-local`, based on upstream `79a016c`.
+
+Connection modules: `hooks/caprigpt-codex-hook.js` strips and forwards events; `src/main/codex-events.js` validates and reduces state; `src/renderer/js/integration.js` handles notification visuals; `scripts/install-codex-hooks.js` installs/removes definitions without granting trust.

@@ -7,6 +7,7 @@ import { Brain } from './brain.js';
 import { Guide } from './guide.js';
 import { Mission } from './mission.js';
 import { Chat } from './chat.js';
+import { IntegrationCompanion } from './integration.js';
 import { LINES } from './lines.js';
 import { pick, fmt } from './util.js';
 
@@ -71,6 +72,7 @@ async function boot() {
 
   const mission = new Mission();
   const brain = new Brain({ capri, panel, voice, host, mission, lang: config.lang });
+  new IntegrationCompanion({ capri, panel, voice, host, brain });
 
   // Click-through everywhere except on her body, the panel and her biochip.
   let interactive = false;
@@ -302,6 +304,9 @@ async function boot() {
         break;
       case 'chat': // "Talk to her" in her menu
         chat.start();
+        break;
+      case 'handoff':
+        chat.handoff();
         break;
       case 'report': // "Mission report" in her menu
         if (capri.stowed) {

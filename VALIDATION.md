@@ -21,3 +21,9 @@ Real applications were not closed or force-quit as part of validation. Approval 
 Removed Claude as the default collaborator from the system prompt and task context. Default help now describes local Ollama chat with planned ChatGPT/Codex task integration. Legacy hook setup remains in a labelled submenu. Added explicit limits against inventing calendar, clock, sunrise, orbit tracking or live task access. Restart clears the old in-memory conversation.
 
 Safety tests and the desktop smoke test pass after this change. The updated live chat test answered: "I\'m working with ChatGPT and Codex as my collaborators, but their task integration isn\'t connected yet, so I don\'t have access to their current tasks or activities." The sampled response is evidence for this prompt, not a guarantee that a small generative model will never hallucinate. Gaming cancellation/unload/resume checks also passed.
+
+## Codex notification milestone
+
+Nine tests pass, including bounded metadata stripping, late-event deduplication, safe installer merging/removal, and a real forwarding child process against the authenticated HTTP receiver. The Electron smoke test passes for hook-to-renderer approval notifications, clearing on resume, cancellation/unload, gaming suppression, alerts after gaming resume, and local handoff preview/copy with mocked clipboard writes. Captured `captures/codex-notifications.png` is labelled CODEX · TEST and was inspected visually.
+
+The installed Codex CLI reports version 0.164.0-alpha.11.1 and ChatGPT sign-in. A read-only app-server hooks/list call recognizes all eight installed CapriGPT definitions. They are enabled but untrusted: no genuine lifecycle dispatch is claimed yet. Review via /hooks is the remaining activation step. No trust bypass, account token extraction, cloud inference request, or background agent was used. Ordinary ChatGPT chats have manual handoff only.

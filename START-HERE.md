@@ -40,9 +40,9 @@ Ctrl+Alt+C uses upstream's small biochip view; it is **not** gaming mode.
 
 AI requests go to a literal loopback HTTP address, normally `127.0.0.1:11434`. Remote hosts, redirects, and cloud model metadata are rejected. Use `127.0.0.1`, rather than `localhost`, if setting `OLLAMA_HOST`. This assumes you trust your installed local Ollama service; Capri cannot control Ollama's own update checks or a malicious replacement service.
 
-Chat history remains in renderer memory for this run. The last 12 conversation messages, the character prompt, and upstream task-summary context are sent to local Ollama. App names are added only when app closing is enabled. Upstream window tracking reads window positions locally. Settings and the local mission log live under `%APPDATA%\CapriGPT`; the old Capri profile is separate. No API key is required. No Claude hooks or startup entry are installed automatically. Legacy Claude options are isolated in an optional legacy submenu. Normal chat and help describe Capri as a companion for ChatGPT and Codex, while clearly stating that live task integration is not connected.
+Chat history remains in renderer memory for this run. The last 12 conversation messages, the character prompt, and upstream task-summary context are sent to local Ollama. App names are added only when app closing is enabled. Upstream window tracking reads window positions locally. Settings and the local mission log live under `%APPDATA%\CapriGPT`; the old Capri profile is separate. No API key is required. No Claude hooks or startup entry are installed automatically. The separate Codex notification installer adds only its own reviewed definitions; see CODEX-CONNECTION.md. Legacy Claude options are isolated in an optional legacy submenu. Normal chat and help describe Capri as a companion for ChatGPT and Codex. Her context distinguishes installed notification hooks from genuine Codex events received. No ordinary ChatGPT conversation feed is connected.
 
-The local event bridge remains on `127.0.0.1:47823` and rejects browser Origin headers. It is a local development integration, not a boundary against malicious programs already running on the PC. Debug routes are available only with `npm.cmd run dev`; use normal start for daily use.
+The local event bridge remains on `127.0.0.1:47823` and rejects browser Origin headers. The Codex notification endpoint also requires a local token. It is a local development integration, not a boundary against malicious programs already running on the PC. Debug routes are available only with `npm.cmd run dev`; use normal start for daily use.
 
 ## Troubleshooting
 
@@ -59,13 +59,13 @@ npm.cmd test
 npm.cmd run test:desktop
 ```
 
-The safety tests use fake apps and fake confirmation responses; they never close a real app. The desktop smoke test starts the actual Electron renderer, asks who Capri works with, checks that her streamed introduction names ChatGPT or Codex without legacy Claude branding, then exercises gaming pause, unload and resume. It exits afterward. Run it while another CapriGPT instance is closed and with the default model installed. Test captures are in `captures/` and ignored by Git.
+Nine safety/integration tests cover the local notification protocol, hook installer and desktop-action gate. The tests use fake apps and fake confirmation responses; they never close a real app. The desktop smoke test starts the actual Electron renderer, asks who Capri works with, checks that a streamed local reply arrives without default Claude branding, then exercises gaming pause, unload and resume. It exits afterward. Run it while another CapriGPT instance is closed and with the default model installed. Test captures are in `captures/` and ignored by Git.
 
 ## Rights and future integration
 
 The code is MIT; preserve `LICENSE` and upstream attribution. **The character images in `assets/capri/` are not MIT-licensed.** Upstream identifies anime frames, fan art and a fan cut-out without a general redistribution grant. Existing animation/art is retained for this local prototype; this does not establish permission to publish or commercially redistribute it. Obtain permission or replace restricted imagery before distributing a build. Fonts are under the SIL Open Font License. No new character art was generated.
 
-See `ROADMAP.md` for optional OpenAI routing, billing, and ChatGPT/Codex integration. These cloud integrations are planned, not implemented.
+See [CODEX-CONNECTION.md](CODEX-CONNECTION.md) to activate the installed local Codex notification hooks and use the previewed ChatGPT/Codex handoff. Ordinary ChatGPT conversations are not automatically observed. Optional paid OpenAI routing remains planned in `ROADMAP.md`.
 
 ## GitHub fork
 

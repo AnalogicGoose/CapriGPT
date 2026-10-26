@@ -2,6 +2,7 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
+const { randomBytes } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const {
   app, BrowserWindow, Tray, Menu, ipcMain, screen, protocol, net, shell, globalShortcut, nativeImage,
@@ -13,6 +14,10 @@ const { TRAY, LANGS } = require('./labels');
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const ollama = require('./ollama');
+const codexHooks = require('../../scripts/install-codex-hooks');
+const { CodexEvents } = require('./codex-events');
+const codexEvents = new CodexEvents();
+let integrationToken;
 const apps = require('./apps');
 const hooks = require('../../scripts/install-hooks');
 const demoSteps = require('../../scripts/demo-sequence');
@@ -141,6 +146,7 @@ async function setGamingMode(on) {
     } else {
       overlay?.showInactive();
       watchWindows();
+      overlay?.webContents.send('integration:state', { ...codexEvents.snapshot(), resumed: true });
     }
   } finally { gamingTransition = false; rebuildTray(); }
 }
@@ -243,6 +249,7 @@ function rebuildTray() {
     { label: t.report, click: () => sendCommand('report') },
     { label: 'CapriGPT — Local Ollama only', enabled: false },
     { label: t.talk, enabled: !cfg.gamingMode, click: () => sendCommand('chat') },
+    { label: 'Copy chat handoff for ChatGPT / Codex…', enabled: !cfg.gamingMode, click: () => sendCommand('handoff') },
     { label: 'Gaming mode — pause AI and hide Capri', type: 'checkbox', checked: cfg.gamingMode,
       enabled: !gamingTransition, click: (item) => setGamingMode(item.checked) },
     { label: 'Allow app closing (always asks confirmation)', type: 'checkbox', checked: cfg.desktopActions,
@@ -302,7 +309,15 @@ function rebuildTray() {
       click: (item) => app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: item.checked }),
     },
     { type: 'separator' },
-    { label: 'ChatGPT / Codex task integration — coming next', enabled: false },
+    { label: 'Codex companion notifications', submenu: [
+      { label: codexEvents.lastSeen ? 'Receiving Codex events locally' : 'Awaiting Codex hook events', enabled: false },
+      { label: 'Connection status / activation help', click: () => {
+        let state;
+        try { state = codexHooks.status(); } catch (error) { state = { installed: false, file: error.message }; }
+        dialog.showMessageBox({ type: 'info', title: 'CapriGPT — Codex connection', message: state.installed ? 'Notification hooks installed' : 'Notification hooks not installed',
+          detail: `${codexEvents.lastSeen ? 'Last event: ' + new Date(codexEvents.lastSeen).toLocaleString() : 'No real Codex event received in this run.'}\n\nReview and trust CapriGPT hooks using /hooks in Codex, then start a fresh turn. Approvals remain in Codex.\nRegular ChatGPT conversations are not connected.\n\n${state.file}` });
+      } },
+    ] },
     { label: 'Legacy Claude integration (optional)', submenu: [
       hookState.installed
         ? { label: t.hooksOn, enabled: false }
@@ -357,6 +372,16 @@ function createTray() {
 }
 
 function registerIpc() {
+  ipcMain.handle('integration:status', () => codexEvents.snapshot());
+  ipcMain.handle('chat:handoff', async (_event, text) => {
+    if (typeof text !== 'string' || !text || text.length > 8000 || config.load().gamingMode) return { ok: false };
+    const { response } = await dialog.showMessageBox({ type: 'info', title: 'CapriGPT — chat handoff',
+      message: 'Copy this conversation for ChatGPT or Codex?', detail: text,
+      buttons: ['Cancel', 'Copy text'], defaultId: 0, cancelId: 0, noLink: true });
+    if (response !== 1) return { ok: false };
+    await clipboard.write([new ClipboardItem({ 'text/plain': new Blob([text], { type: 'text/plain' }) })]);
+    return { ok: true };
+  });
   ipcMain.on('overlay:interactive', (_e, on) => {
     overlay?.setIgnoreMouseEvents(!on, { forward: true });
   });
@@ -545,10 +570,25 @@ function main() {
     createOverlay();
     createTray();
     watchWindows();
+    integrationToken = randomBytes(32).toString('hex');
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(path.join(app.getPath('userData'), 'integration.json'), JSON.stringify({ port: PORT, token: integrationToken }), { mode: 0o600 });
     createBridge({
       port: PORT,
       onEvent: (evt) => { if (!config.load().gamingMode) overlay?.webContents.send('claude:event', evt); },
       onDebug: DEV ? debugHandler : null,
+      integrationToken,
+      onCodexEvent: (input) => {
+        const first = !codexEvents.lastSeen;
+        const event = codexEvents.accept(input);
+        if (!event) return false;
+        if (!config.load().gamingMode) {
+          overlay?.webContents.send('integration:state', codexEvents.snapshot());
+          overlay?.webContents.send('integration:event', event);
+        }
+        if (first && codexEvents.lastSeen) rebuildTray();
+        return true;
+      },
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
     refreshModels(); // for her menu's model list

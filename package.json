@@ -14,7 +14,10 @@
     "hooks:uninstall": "node scripts/install-hooks.js --uninstall",
     "dist": "electron-builder --win",
     "test": "node --test tests/*.test.js",
-    "test:desktop": "electron scripts/smoke-electron.js"
+    "test:desktop": "electron scripts/smoke-electron.js",
+    "codex:install": "node scripts/install-codex-hooks.js",
+    "codex:uninstall": "node scripts/install-codex-hooks.js --uninstall",
+    "codex:status": "node scripts/install-codex-hooks.js --status"
   },
   "keywords": [
     "claude-code",
@@ -48,7 +51,8 @@
     ],
     "asarUnpack": [
       "hooks/**",
-      "src/main/windows.ps1"
+      "src/main/windows.ps1",
+      "src/main/codex-events.js"
     ],
     "win": {
       "target": "nsis",
