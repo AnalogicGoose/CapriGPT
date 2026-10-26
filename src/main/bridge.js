@@ -38,7 +38,7 @@ function readJson(req) {
   });
 }
 
-function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent }) {
+function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent, onIntegrationStatus }) {
   const server = http.createServer(async (req, res) => {
     // Browsers always send an Origin header on cross-site requests; hooks never do.
     // Refusing those keeps random web pages from puppeting Capri.
@@ -46,10 +46,12 @@ function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent }
 
     const url = new URL(req.url, 'http://127.0.0.1');
 
-    if (req.method === 'POST' && url.pathname === '/integration/codex') {
+    if ((req.method === 'POST' && url.pathname === '/integration/codex')
+      || (req.method === 'GET' && url.pathname === '/integration/status')) {
       const supplied = Buffer.from(String(req.headers.authorization || ''));
       const expected = Buffer.from(`Bearer ${integrationToken || ''}`);
       if (!integrationToken || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return send(res, 403, { ok: false });
+      if (req.method === 'GET') return send(res, 200, onIntegrationStatus?.() || {});
       try {
         const event = await readJson(req);
         const accepted = onCodexEvent?.(event);

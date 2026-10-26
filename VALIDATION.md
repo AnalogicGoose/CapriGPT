@@ -27,3 +27,9 @@ Safety tests and the desktop smoke test pass after this change. The updated live
 Nine tests pass, including bounded metadata stripping, late-event deduplication, safe installer merging/removal, and a real forwarding child process against the authenticated HTTP receiver. The Electron smoke test passes for hook-to-renderer approval notifications, clearing on resume, cancellation/unload, gaming suppression, alerts after gaming resume, and local handoff preview/copy with mocked clipboard writes. Captured `captures/codex-notifications.png` is labelled CODEX · TEST and was inspected visually.
 
 The installed Codex CLI reports version 0.164.0-alpha.11.1 and ChatGPT sign-in. A read-only app-server hooks/list call recognizes all eight installed CapriGPT definitions. They are enabled but untrusted: no genuine lifecycle dispatch is claimed yet. Review via /hooks is the remaining activation step. No trust bypass, account token extraction, cloud inference request, or background agent was used. Ordinary ChatGPT chats have manual handoff only.
+
+## Real CLI activation verified
+
+All eight hook definitions were confirmed trusted and enabled. The user’s app-bundled 0.164.0-alpha.11.1 terminal completed test prompts but did not launch the forwarder in this environment. Installing the complete official @openai/codex 0.164.0 package separately and launching it in a terminal with TERM cleared produced a genuine, non-test completion delivery (HTTP 200). The user confirmed that Capri visibly reacted. No account credentials or trust state were replaced. Desktop-app-originated events remain unverified.
+
+Added an authenticated read-only receiver status endpoint and a bounded last-delivery diagnostic file without conversation content. Smoke tests use their own profile and connection file so they can run without stopping the live companion.

@@ -1,6 +1,6 @@
 # Connect Capri to Codex
 
-The notification connection is implemented and tested. On this laptop, its eight hook definitions are installed in `C:\Users\gabri\.codex\hooks.json`. Codex's own hook listing recognizes them and reports them as **untrusted**. Real automatic activity remains pending your review.
+The notification connection is implemented and live-tested. On this laptop, all eight definitions are trusted. A genuine completion event was delivered from the complete official Codex CLI 0.164.0, and the user confirmed that Capri reacted.
 
 ## Activate once
 
@@ -66,4 +66,10 @@ npm.cmd run test:desktop
 
 The desktop test sends clearly labelled **CODEX · TEST** fixtures through the real forwarding process, authenticated receiver, and renderer. Fixtures never claim a real connection. It verifies the approval alert and clearing behavior, no approval button, paused notifications, outstanding alerts after gaming resume, local chat, and handoff preview/copy using fake clipboard writes. It does not run real Codex tasks or consume cloud inference for integration testing.
 
-No genuine Codex lifecycle event has yet been verified in the running desktop app: that last check needs the trust activation above.
+A genuine Codex CLI event has now been verified: local delivery diagnostics recorded a non-test completion event with HTTP 200, and the user confirmed the visible reaction. This validates the complete CLI path; the desktop app’s own Codex runtime remains a separate unverified path.
+
+## Windows launcher and delivery diagnostics
+
+The app-bundled alpha CLI in this setup showed an incomplete-package error and did not launch the trusted forwarding hook during the test. The complete official `@openai/codex` 0.164.0 package did launch it. Use a complete CLI package for terminal work; do not rely on the app-internal executable path as a standalone installation. The local `outputs/Start-Codex.cmd` launcher opens the separately installed complete package in this project and clears an inherited `TERM=dumb` setting for the new terminal only. It does not alter account authentication, trust decisions, or normal approval settings.
+
+Run `npm.cmd run codex:check` for delivery status. The newest app build exposes an authenticated read-only status endpoint; an older running build may need a normal restart before detailed receiver state is available. A single `codex-hook-status.json` file in the CapriGPT data directory records the last forwarding outcome, timestamp, stage, test marker and HTTP acceptance result. It contains no prompts, commands, reply text or connection token. Tests now use an isolated profile so they cannot replace the live companion’s connection settings.

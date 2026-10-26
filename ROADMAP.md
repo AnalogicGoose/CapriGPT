@@ -16,7 +16,7 @@ Keep normal casual conversation local. Offer cloud routing as a visible user cho
 
 ## 3. ChatGPT/Codex integration (first connection built)
 
-Implemented: local Codex lifecycle notifications through supported hooks, a separate provider-labelled renderer, authenticated loopback delivery, metadata-only payloads, and a user-previewed copy/paste handoff for ChatGPT or Codex. The definitions are installed on this laptop; their trust review and the first genuine desktop lifecycle event remain pending. See [CODEX-CONNECTION.md](CODEX-CONNECTION.md).
+Implemented: local Codex lifecycle notifications through supported hooks, a separate provider-labelled renderer, authenticated loopback delivery, metadata-only payloads, and a user-previewed copy/paste handoff for ChatGPT or Codex. The definitions are installed and trusted on this laptop. A genuine event from the complete Codex CLI and the user-visible reaction are verified; the desktop app’s own Codex runtime remains unverified. See [CODEX-CONNECTION.md](CODEX-CONNECTION.md).
 
 Regular ChatGPT chats are not automatically observed, and no paid model routing is enabled. Keep native approvals in Codex. The Codex app-server is a possible later route for a dedicated embedded client; it is not needed for the notification-only connection and no desktop control socket is assumed.
 

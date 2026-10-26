@@ -25,7 +25,9 @@ const demoSteps = require('../../scripts/demo-sequence');
 const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = process.argv.includes('--dev');
 // Keep this prototype's preferences separate from the original app.
-app.setPath('userData', path.join(app.getPath('appData'), 'CapriGPT'));
+const smokeTest = process.argv.some((arg) => path.basename(arg) === 'smoke-electron.js');
+app.setPath('userData', smokeTest && process.env.CAPRIGPT_TEST_PROFILE
+  ? process.env.CAPRIGPT_TEST_PROFILE : path.join(app.getPath('appData'), 'CapriGPT'));
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 const CLAUDE_CODE_HELP = 'https://code.claude.com/docs/en/quickstart';
@@ -578,6 +580,8 @@ function main() {
       onEvent: (evt) => { if (!config.load().gamingMode) overlay?.webContents.send('claude:event', evt); },
       onDebug: DEV ? debugHandler : null,
       integrationToken,
+      onIntegrationStatus: () => ({ ...codexEvents.snapshot(), gamingMode: config.load().gamingMode,
+        visible: Boolean(overlay?.isVisible()), rendererReady: Boolean(overlay && !overlay.webContents.isLoading()) }),
       onCodexEvent: (input) => {
         const first = !codexEvents.lastSeen;
         const event = codexEvents.accept(input);

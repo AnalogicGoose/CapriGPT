@@ -64,7 +64,7 @@ test('installer preserves unrelated hooks, backs up, is idempotent and removes o
 test('real hook process delivers to authenticated local bridge with no permission decision output', async () => {
   const state = new CodexEvents();
   const token = 'a'.repeat(64);
-  const server = createBridge({ port: 0, onEvent: () => {}, integrationToken: token, onCodexEvent: (event) => state.accept(event) });
+  const server = createBridge({ port: 0, onEvent: () => {}, integrationToken: token, onCodexEvent: (event) => state.accept(event), onIntegrationStatus: () => state.snapshot() });
   await once(server, 'listening');
   const port = server.address().port;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'caprigpt-bridge-test-'));
@@ -73,6 +73,7 @@ test('real hook process delivers to authenticated local bridge with no permissio
   try {
     const denied = await fetch(`http://127.0.0.1:${port}/integration/codex`, { method: 'POST', body: '{}' });
     assert.equal(denied.status, 403);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/integration/status`)).status, 403);
     const origin = await fetch(`http://127.0.0.1:${port}/integration/codex`, { method: 'POST', headers: { origin: 'https://example.com', authorization: `Bearer ${token}` }, body: '{}' });
     assert.equal(origin.status, 403);
     const child = spawn(process.execPath, [path.resolve(__dirname, '../hooks/caprigpt-codex-hook.js'), '--test'],
@@ -86,5 +87,10 @@ test('real hook process delivers to authenticated local bridge with no permissio
     assert.deepEqual(JSON.parse(stdout), {}); // never allow/deny/continue/rewrite
     assert.equal(state.snapshot().sessions[0].stage, 'waiting');
     assert.equal(state.snapshot().lastSeen, null);
+    const status = await fetch(`http://127.0.0.1:${port}/integration/status`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal((await status.json()).sessions[0].stage, 'waiting');
+    const diagnostic = fs.readFileSync(path.join(dir, 'codex-hook-status.json'), 'utf8');
+    assert.equal(JSON.parse(diagnostic).status, 'delivered');
+    assert.doesNotMatch(diagnostic, /private|authorization|aaaaaaa/);
   } finally { server.closeAllConnections(); server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
 });

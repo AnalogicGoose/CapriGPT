@@ -17,7 +17,8 @@
     "test:desktop": "electron scripts/smoke-electron.js",
     "codex:install": "node scripts/install-codex-hooks.js",
     "codex:uninstall": "node scripts/install-codex-hooks.js --uninstall",
-    "codex:status": "node scripts/install-codex-hooks.js --status"
+    "codex:status": "node scripts/install-codex-hooks.js --status",
+    "codex:check": "node scripts/check-codex-connection.js"
   },
   "keywords": [
     "claude-code",
