@@ -45,3 +45,9 @@ A delayed ticker callback could reveal the small working label after a full mess
 ## Shared desktop/CLI connection settings
 
 Observed HTTP 403 from the previously saved connection details after a desktop-shortcut launch. Moved notification connection material to a shared, Git-ignored per-checkout runtime directory, preserved its token across restarts, and delayed publishing until the port is bound. After the user restarted Capri, the authenticated status check succeeded with gamingMode false, visible true and rendererReady true. No genuine desktop-app-originated lifecycle event has arrived yet. The app-server process predates the installed hooks; a desktop app restart is the next activation check. Ten tests and the isolated Electron layout test pass.
+
+## Desktop activation and quiet reactions verified
+
+After restarting the desktop app, “test capri” produced non-test ready/working events for native chat 01a1769f-6db1-75c1-8066-23571142e87a, accepted with HTTP 200. The user confirmed the visible reaction. This supersedes the pending desktop activation status above.
+
+Quiet mode keeps routine work silent, throttles burst pulses, and uses a new held-pose focus cycle with the original cut-out and renderer. Existing seated, completion-hop and error animations are reused. Twelve tests pass, covering routine silence, burst throttling, sticky approval, competing turns, errors, completion and loop timing. The isolated Electron integration smoke test passes through actual hook delivery and the real renderer without requiring Ollama. The full model/chat smoke test was not run for this animation change; Ollama was offline. Restart Capri normally to load the changes.

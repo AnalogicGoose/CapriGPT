@@ -64,8 +64,6 @@ app.whenReady().then(async () => {
       console.log('CAPTURE:', capture);
       clearTimeout(limit); app.exit(0); return;
     }
-    const status = await js('host.chatStatus()');
-    assert.equal(status.ok, true, JSON.stringify(status));
     const hook = async (hook_event_name, extra = {}) => {
       const child = spawn('node', [path.resolve(__dirname, '../hooks/caprigpt-codex-hook.js'), '--test'], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
       let stdout = '';
@@ -86,6 +84,18 @@ app.whenReady().then(async () => {
     };
     await hook('UserPromptSubmit');
     await hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'NEVER_FORWARD_THIS' } });
+    assert.notEqual(await js("document.querySelector('.panel__state').textContent"), 'CODEX · TEST', 'Routine work must not open a notification');
+    if (process.argv.includes('--integration-only')) {
+      await pause(700);
+      const bounds = await js(`(() => {
+        const r = document.querySelector('#sprite').getBoundingClientRect();
+        const x = Math.max(0, Math.floor(r.x)), y = Math.max(0, Math.floor(r.y));
+        return {x, y, width: Math.min(Math.ceil(r.width), innerWidth-x), height: Math.min(Math.ceil(r.height), innerHeight-y)};
+      })()`);
+      const capture = path.resolve(__dirname, '..', 'captures', 'quiet-focus.png');
+      fs.mkdirSync(path.dirname(capture), { recursive: true });
+      fs.writeFileSync(capture, (await win.webContents.capturePage(bounds)).toPNG());
+    }
     await hook('PermissionRequest', { tool_name: 'Bash' });
     const waiting = await js('host.integrationStatus()');
     assert.equal(waiting.sessions.at(-1).stage, 'waiting');
@@ -99,6 +109,12 @@ app.whenReady().then(async () => {
     await hook('PostToolUse', { tool_name: 'Bash', tool_response: { exit_code: 0 } });
     assert.equal(await js("document.querySelector('#panel').hidden"), true, 'Approval alert should clear once the tool resumes');
     await hook('Stop');
+    if (process.argv.includes('--integration-only')) {
+      console.log('PASS: quiet routine work, approval, resume and completion through the real hook bridge');
+      clearTimeout(limit); app.exit(0); return;
+    }
+    const status = await js('host.chatStatus()');
+    assert.equal(status.ok, true, JSON.stringify(status));
     await js("window.smokeDeltas = ''; host.onChatDelta(({text}) => { window.smokeDeltas += text; }); true");
     const disabled = await js('host.closeApp("test-nonexistent-app", false)');
     assert.match(disabled.error, /disabled/);

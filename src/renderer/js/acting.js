@@ -39,6 +39,18 @@ export const ACTS = {
     ],
   },
 
+  // Quiet focus: the same cut-out and held drawings, with a small head dip and
+  // slower arm/hair follow-through. No new texture, shader pass or effect emitter.
+  focus: {
+    loop: true,
+    keys: [
+      [10, { bob: 0, head: 0.04, hair: -1.5, arms: 0.02 }],
+      [8, { bob: -2, head: 0.09, hair: 0, arms: 0.05 }],
+      [10, { bob: -3, head: 0.12, hair: 1.5, arms: 0.03 }],
+      [8, { bob: -2, head: 0.07, hair: 0, arms: 0.01 }],
+    ],
+  },
+
   // perched on a window, hands down on the ledge, legs kicking one after the other
   sit: {
     loop: true,

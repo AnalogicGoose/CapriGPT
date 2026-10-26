@@ -474,7 +474,7 @@ export class Capri {
     if (this.stance === 'sit') return 'sit';
     if (this.stance === 'peek') return 'peek';
     if (this.stance === 'fall') return 'fall';
-    return this.mode === 'sleep' ? 'sleep' : 'stand';
+    return this.mode === 'sleep' ? 'sleep' : this.mode === 'work' ? 'focus' : 'stand';
   }
 
   setMode(mode) {

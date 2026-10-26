@@ -5,6 +5,7 @@ export class IntegrationCompanion {
   }
   constructor({ capri, panel, voice, host, brain }) {
     Object.assign(this, { capri, panel, voice, host, brain });
+    this.lastPulse = -Infinity;
     this.snapshot = { lastSeen: null, sessions: [] };
     host.onIntegrationState((snapshot) => {
       this.snapshot = snapshot;
@@ -43,10 +44,14 @@ export class IntegrationCompanion {
     }
     if (event.stage !== 'waiting' && this.panel.current?.badge?.startsWith('CODEX')) this.panel.clearKind('alert');
     if (event.stage === 'working') {
-      this.capri.pulse();
+      // A burst of tool hooks should not turn into continuous glitch flashes.
+      const now = performance.now();
+      if (now - this.lastPulse >= 1800) {
+        this.capri.pulse();
+        this.lastPulse = now;
+      }
       this.capri.setMode('work');
-      // Tool traffic animates Capri quietly instead of adding a floating status label.
-      if (event.tool) return;
+      return; // quiet mode: the focus cycle carries all routine work, including turn start
     } else if (event.stage === 'waiting') {
       this.capri.setMode('alert');
       this.voice.play('alert');
@@ -55,6 +60,8 @@ export class IntegrationCompanion {
       if (event.stage === 'completed' && !active) this.capri.perform('hop');
       if (event.stage === 'tool_failed') { this.capri.hurt(); this.voice.play('error'); }
     }
+    // Connection, interruption and session-close events update her state silently.
+    if (!['waiting', 'tool_failed', 'completed'].includes(event.stage)) return;
     const kind = event.stage === 'waiting' ? 'alert' : event.stage === 'tool_failed' ? 'error' : event.stage === 'completed' ? 'done' : event.stage === 'working' ? 'work' : 'info';
     this.panel.say({ kind, badge: label, tag: event.project, line: lines[event.stage], hold: event.stage === 'waiting' ? null : 6500 });
   }

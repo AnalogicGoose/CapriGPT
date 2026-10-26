@@ -66,7 +66,7 @@ npm.cmd run test:desktop
 
 The desktop test sends clearly labelled **CODEX · TEST** fixtures through the real forwarding process, authenticated receiver, and renderer. Fixtures never claim a real connection. It verifies the approval alert and clearing behavior, no approval button, paused notifications, outstanding alerts after gaming resume, local chat, and handoff preview/copy using fake clipboard writes. It does not run real Codex tasks or consume cloud inference for integration testing.
 
-A genuine Codex CLI event has now been verified: local delivery diagnostics recorded a non-test completion event with HTTP 200, and the user confirmed the visible reaction. This validates the complete CLI path; the desktop app’s own Codex runtime remains a separate unverified path.
+A genuine Codex CLI event has been verified: local delivery diagnostics recorded a non-test completion event with HTTP 200, and the user confirmed the visible reaction. Desktop-app events were subsequently verified as described below.
 
 ## Windows launcher and delivery diagnostics
 
@@ -80,4 +80,10 @@ The three requested follow-ups are saved in TODO.md. Desktop Codex chats are the
 
 The previous saved connection location produced HTTP 403 after a desktop launch. Both sides now use this checkout’s `.caprigpt-local/integration.json`, which is ignored by Git. The token is reused across normal restarts, and the file is published only after Capri owns its local port. The restarted desktop-shortcut instance now answers the authenticated status check correctly. This shared per-checkout location is for the current development prototype; installer/runtime relocation belongs to the packaging to-do.
 
-The app’s background Codex process predates hook installation. No supported hook-reload method was found in the installed app-server protocol. Completely quit and reopen the desktop app, return to this chat, then send a fresh message to test whether its runtime loads the trusted definitions. This remains an activation test, not a claim that desktop-originated events are already working. Current receiver status has no genuine app event yet.
+After the desktop app was fully restarted, the user's “test capri” message produced genuine ready and working events for this native Codex chat. The authenticated receiver accepted them with HTTP 200; the user confirmed that Capri visibly reacted. Desktop Codex chats and the complete CLI now use the same trusted notification hooks. Ordinary ChatGPT conversations still have manual handoff only.
+
+## Quiet reactions
+
+Routine work, connection, interruption and session closure update Capri silently. Standing work uses a gentle focus loop on the original cut-out and animation rig; seated work retains its existing seated cycle. Tool bursts produce at most one small glitch pulse per 1.8 seconds. Completion keeps the existing hop and message; approval requests remain sticky, and tool errors retain their alert. Another turn cannot replace a pending approval. No new artwork, textures, inference calls or rendering passes are required. Gaming mode still hides the companion and pauses inference.
+
+Quit Capri from her tray menu and reopen the desktop shortcut to load renderer changes. Codex does not need another restart or hook trust review for this update.

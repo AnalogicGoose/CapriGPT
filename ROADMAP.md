@@ -40,4 +40,4 @@ Hosted fork: [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desk
 
 Connection modules: `hooks/caprigpt-codex-hook.js` strips and forwards events; `src/main/codex-events.js` validates and reduces state; `src/renderer/js/integration.js` handles notification visuals; `scripts/install-codex-hooks.js` installs/removes definitions without granting trust.
 
-The three accepted follow-ups (quiet mode, optional local memory, and packaged launch/update flow) are tracked in [TODO.md](TODO.md). Desktop lifecycle activation remains the active task; shared connection settings are fixed, pending a desktop app restart and real-event verification.
+The three accepted follow-ups (quiet mode, optional local memory, and packaged launch/update flow) are tracked in [TODO.md](TODO.md). Desktop Codex lifecycle events are verified by authenticated delivery and user-visible reaction. Quiet mode now uses the original artwork with a focused work cycle and messages for completion, approval and errors. Local memory and packaging remain pending.
