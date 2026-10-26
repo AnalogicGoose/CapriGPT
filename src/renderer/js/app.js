@@ -393,7 +393,7 @@ async function boot() {
   // entrance: her face big in the corner says hi, then she dives down to her spot
   // (put away last time: she starts in her biochip)
   if (config.visible === false) capri.stowNow();
-  else if (intro && !config.welcomed) await capri.intro(capri.spot('post'));
+  else if (intro) await capri.intro(capri.spot('post'));
   else await capri.materialize(capri.spot('post'));
   const hooks = await host.hooksStatus();
   if (!config.welcomed) {

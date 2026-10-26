@@ -51,3 +51,7 @@ Observed HTTP 403 from the previously saved connection details after a desktop-s
 After restarting the desktop app, “test capri” produced non-test ready/working events for native chat 01a1769f-6db1-75c1-8066-23571142e87a, accepted with HTTP 200. The user confirmed the visible reaction. This supersedes the pending desktop activation status above.
 
 Quiet mode keeps routine work silent, throttles burst pulses, and uses a new held-pose focus cycle with the original cut-out and renderer. Existing seated, completion-hop and error animations are reused. Twelve tests pass, covering routine silence, burst throttling, sticky approval, competing turns, errors, completion and loop timing. The isolated Electron integration smoke test passes through actual hook delivery and the real renderer without requiring Ollama. The full model/chat smoke test was not run for this animation change; Ollama was offline. Restart Capri normally to load the changes.
+
+## Opening greeting restored
+
+Removed the first-launch-only condition from the existing full “hi” entrance. Visible fresh launches now play the original intro, while the onboarding message remains first-launch-only. Starting stowed still respects the saved visibility setting, missing intro assets still fall back to materialization, and reduced motion is handled by the existing intro implementation. Clicking the shortcut while Capri is already running displays status instead of restarting her. The isolated Electron integration smoke test passes with this startup path.
