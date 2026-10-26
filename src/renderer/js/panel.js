@@ -137,6 +137,7 @@ export class Panel {
     this.summary.hidden = !msg.summary;
     this.renderLog(msg.log || []);
 
+    clearTimeout(this.tickerTimer);
     this.tickerEl.hidden = true;
     this.leaving = false;
     this.el.hidden = false;
@@ -397,6 +398,7 @@ export class Panel {
     this.tickerEl.style.visibility = '';
     this.place();
     if (!this.el.hidden) this.replayEnter();
+    else if (this.tickerAction) this.setTicker(this.tickerAction);
   }
 
   replayEnter() {
@@ -438,12 +440,14 @@ export class Panel {
   setTicker(action) {
     this.tickerAction = action;
     clearTimeout(this.tickerTimer);
-    if (!action || this.visible) {
+    if (!action || this.visible || this.suspended) {
       this.tickerEl.hidden = true;
       return;
     }
-    const wait = Math.max(0, 380 - (performance.now() - this.tickerShownAt));
+    const wait = Math.max(0, 380 - (performance.now() - this.tickerShownAt), this.leaving && !this.el.hidden ? 170 : 0);
     this.tickerTimer = setTimeout(() => {
+      // A full message may have opened while this throttled update was waiting.
+      if (this.visible || this.suspended || this.tickerAction !== action) return;
       // Claude thinking: the seconds counting up don't flash each time, only the first one does
       const counting = action.thinking && this.tickerEl.dataset.thinking === 'true' && !this.tickerEl.hidden;
       this.tickerShownAt = performance.now();

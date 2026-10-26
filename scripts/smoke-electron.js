@@ -21,6 +21,49 @@ app.whenReady().then(async () => {
     const js = (source) => win.webContents.executeJavaScript(source);
     for (let i = 0; i < 120 && !await js("document.documentElement.dataset.caprigptReady === 'true'"); i++) await pause(500);
     assert.equal(await js("document.documentElement.dataset.caprigptReady"), 'true');
+    if (process.argv.includes('--layout-only')) {
+      const result = await js(`(async () => {
+        const { Panel } = await import('./js/panel.js');
+        const root = document.querySelector('#panel').cloneNode(true);
+        const ticker = document.querySelector('#ticker').cloneNode(true);
+        root.id = 'layout-test-panel'; ticker.id = 'layout-test-ticker';
+        root.hidden = ticker.hidden = true;
+        document.body.append(root, ticker);
+        const panel = new Panel({panel: root, ticker, labels: {state: {work: 'CODEX', info: 'INFO'}}});
+        panel.setAnchor({x: 100, y: 300, top: 180}, {w: innerWidth, h: innerHeight});
+        const pause = ms => new Promise(r => setTimeout(r, ms));
+        panel.tickerShownAt = performance.now();
+        panel.setTicker({verb: 'CODEX', target: 'System32'});
+        panel.say({kind: 'work', badge: 'CODEX', line: 'Codex is working.', hold: null});
+        await pause(500);
+        if (!ticker.hidden || root.hidden) throw Error('Delayed ticker overlaps the working message');
+        panel.setTicker({verb: 'CODEX', target: 'Bash'});
+        await pause(400);
+        if (!ticker.hidden) throw Error('Tool update overlaps an open message');
+        panel.hide();
+        await pause(500);
+        if (ticker.hidden || !root.hidden) throw Error('Ticker did not return after message dismissal');
+        panel.setTicker(null);
+        panel.tickerShownAt = performance.now();
+        panel.setTicker({verb:'CODEX', target:'Queued update'});
+        panel.suspend();
+        await pause(500);
+        panel.resume();
+        await pause(500);
+        if (ticker.hidden) throw Error('Ticker did not return after suspension');
+        panel.say({kind:'work', badge:'CODEX', line:'Codex is working.', hold:null});
+        await pause(500);
+        if (!ticker.hidden) throw Error('Ticker overlaps the restored message');
+        const r = root.getBoundingClientRect();
+        return {x:Math.max(0,Math.floor(r.x)-14), y:Math.max(0,Math.floor(r.y)-14), width:Math.ceil(r.width)+28, height:Math.ceil(r.height)+28};
+      })()`);
+      const capture = path.resolve(__dirname, '..', 'captures', 'panel-layout-fixed.png');
+      fs.mkdirSync(path.dirname(capture), { recursive: true });
+      fs.writeFileSync(capture, (await win.webContents.capturePage(result)).toPNG());
+      console.log('PASS: no message/ticker overlap during delayed updates, dismissal or suspension');
+      console.log('CAPTURE:', capture);
+      clearTimeout(limit); app.exit(0); return;
+    }
     const status = await js('host.chatStatus()');
     assert.equal(status.ok, true, JSON.stringify(status));
     const hook = async (hook_event_name, extra = {}) => {

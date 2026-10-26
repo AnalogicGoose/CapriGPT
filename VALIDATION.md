@@ -37,3 +37,7 @@ Added an authenticated read-only receiver status endpoint and a bounded last-del
 ## Working-label cleanup
 
 Fixed a state-isolation bug where an unfinished diagnostic fixture could keep the CODEX ticker visible after a genuine turn completed. Real events now remove test-only state, and test fixtures cannot enter an already-live connection. The renderer also excludes test state from real activity decisions. Ten tests pass, including a regression for an unfinished test task followed by a real task completion. The currently running older build needs a normal restart to load this change.
+
+## Message/ticker overlap fixed
+
+A delayed ticker callback could reveal the small working label after a full message had already opened, covering its portrait and text. Accepted messages now cancel pending ticker updates; delayed callbacks recheck visibility and suspension. The ticker returns only after the message exit animation. A real Electron layout regression passes for delayed tool updates, dismissal, and suspension/resume. The cropped capture captures/panel-layout-fixed.png was inspected visually.

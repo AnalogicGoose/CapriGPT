@@ -18,7 +18,8 @@
     "codex:install": "node scripts/install-codex-hooks.js",
     "codex:uninstall": "node scripts/install-codex-hooks.js --uninstall",
     "codex:status": "node scripts/install-codex-hooks.js --status",
-    "codex:check": "node scripts/check-codex-connection.js"
+    "codex:check": "node scripts/check-codex-connection.js",
+    "test:layout": "electron scripts/smoke-electron.js --layout-only"
   },
   "keywords": [
     "claude-code",
