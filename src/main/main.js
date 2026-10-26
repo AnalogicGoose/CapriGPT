@@ -16,6 +16,7 @@ const { startWindowWatch } = require('./windows');
 const ollama = require('./ollama');
 const codexHooks = require('../../scripts/install-codex-hooks');
 const { CodexEvents } = require('./codex-events');
+const { connectionFile } = require('../../hooks/caprigpt-codex-hook');
 const codexEvents = new CodexEvents();
 let integrationToken;
 const apps = require('./apps');
@@ -572,10 +573,10 @@ function main() {
     createOverlay();
     createTray();
     watchWindows();
-    integrationToken = randomBytes(32).toString('hex');
-    fs.mkdirSync(app.getPath('userData'), { recursive: true });
-    fs.writeFileSync(path.join(app.getPath('userData'), 'integration.json'), JSON.stringify({ port: PORT, token: integrationToken }), { mode: 0o600 });
-    createBridge({
+    let previousConnection;
+    try { previousConnection = JSON.parse(fs.readFileSync(connectionFile(), 'utf8')); } catch {}
+    integrationToken = /^[a-f0-9]{64}$/.test(previousConnection?.token || '') ? previousConnection.token : randomBytes(32).toString('hex');
+    const bridge = createBridge({
       port: PORT,
       onEvent: (evt) => { if (!config.load().gamingMode) overlay?.webContents.send('claude:event', evt); },
       onDebug: DEV ? debugHandler : null,
@@ -593,6 +594,12 @@ function main() {
         if (first && codexEvents.lastSeen) rebuildTray();
         return true;
       },
+    });
+    bridge.once('listening', () => {
+      const target = connectionFile();
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      // Publish only after we own the port. A failed second launch must not replace it.
+      fs.writeFileSync(target, JSON.stringify({ port: PORT, token: integrationToken }), { mode: 0o600 });
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
     refreshModels(); // for her menu's model list

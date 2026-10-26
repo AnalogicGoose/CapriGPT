@@ -41,3 +41,7 @@ Fixed a state-isolation bug where an unfinished diagnostic fixture could keep th
 ## Message/ticker overlap fixed
 
 A delayed ticker callback could reveal the small working label after a full message had already opened, covering its portrait and text. Accepted messages now cancel pending ticker updates; delayed callbacks recheck visibility and suspension. The ticker returns only after the message exit animation. A real Electron layout regression passes for delayed tool updates, dismissal, and suspension/resume. The cropped capture captures/panel-layout-fixed.png was inspected visually.
+
+## Shared desktop/CLI connection settings
+
+Observed HTTP 403 from the previously saved connection details after a desktop-shortcut launch. Moved notification connection material to a shared, Git-ignored per-checkout runtime directory, preserved its token across restarts, and delayed publishing until the port is bound. After the user restarted Capri, the authenticated status check succeeded with gamingMode false, visible true and rendererReady true. No genuine desktop-app-originated lifecycle event has arrived yet. The app-server process predates the installed hooks; a desktop app restart is the next activation check. Ten tests and the isolated Electron layout test pass.

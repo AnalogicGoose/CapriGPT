@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const { fromHook } = require('../src/main/codex-events');
 
 function connectionFile() {
-  return process.env.CAPRIGPT_CONNECTION_FILE || path.join(process.env.APPDATA || path.join(os.homedir(), '.config'), 'CapriGPT', 'integration.json');
+  return process.env.CAPRIGPT_CONNECTION_FILE || path.resolve(__dirname, '..', '.caprigpt-local', 'integration.json');
 }
 function record(status) {
   try {

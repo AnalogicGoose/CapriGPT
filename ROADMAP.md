@@ -39,3 +39,5 @@ Resolve character asset permissions or replace them with licensed assets before 
 Hosted fork: [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop). The prototype is pushed to `codex/caprigpt-local`, based on upstream `79a016c`.
 
 Connection modules: `hooks/caprigpt-codex-hook.js` strips and forwards events; `src/main/codex-events.js` validates and reduces state; `src/renderer/js/integration.js` handles notification visuals; `scripts/install-codex-hooks.js` installs/removes definitions without granting trust.
+
+The three accepted follow-ups (quiet mode, optional local memory, and packaged launch/update flow) are tracked in [TODO.md](TODO.md). Desktop lifecycle activation remains the active task; shared connection settings are fixed, pending a desktop app restart and real-event verification.
