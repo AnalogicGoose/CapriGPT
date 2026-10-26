@@ -262,7 +262,7 @@ export class Panel {
     this.el.classList.toggle('is-chat', Boolean(chat));
     this.line.classList.remove('is-streaming');
     this.chatForm.hidden = !chat;
-    this.note.hidden = !chat;
+    this.note.hidden = !chat?.note;
     if (!chat) return;
     this.chatInput.placeholder = chat.placeholder;
     this.chatInput.setAttribute('aria-label', chat.placeholder);
@@ -270,9 +270,12 @@ export class Panel {
     this.chatSend.disabled = false;
     this.chatSend.textContent = chat.send;
     this.chatClose.setAttribute('aria-label', chat.close);
-    const tag = document.createElement('b');
-    tag.textContent = chat.noteTag;
-    this.note.replaceChildren(tag, ` ${chat.note}`);
+    this.note.replaceChildren();
+    if (chat.note) {
+      const tag = document.createElement('b');
+      tag.textContent = chat.noteTag || '';
+      this.note.replaceChildren(tag, ` ${chat.note}`);
+    }
     requestAnimationFrame(() => this.chatInput.focus());
   }
 

@@ -1,5 +1,5 @@
 // Talking to her: you type in her panel, and a local model (Ollama, from the main process) answers
-// as her, in writing. The replies are AI-generated, and the panel says so on every chat.
+// as her, in writing. Local AI details are documented in the setup guide.
 // Ask her to close an app and she will (Windows): she spots it in what you wrote (or the model names
 // it with a tag in its answer), shows you a button with that app's name, and only your click closes it.
 
@@ -96,8 +96,6 @@ export class Chat {
         placeholder: t.placeholder,
         send: t.send,
         close: t.close,
-        noteTag: t.noteTag,
-        note: t.note,
       },
       onSend: (text) => this.send(text),
       onLeave: () => this.close(),
