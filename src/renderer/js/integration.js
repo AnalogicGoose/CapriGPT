@@ -1,14 +1,17 @@
 // Read-only notifications. This controller has no action/approval tool or LLM calls.
 export class IntegrationCompanion {
+  visibleSessions() {
+    return this.snapshot.lastSeen ? this.snapshot.sessions.filter((event) => !event.demo) : this.snapshot.sessions;
+  }
   constructor({ capri, panel, voice, host, brain }) {
     Object.assign(this, { capri, panel, voice, host, brain });
     this.snapshot = { lastSeen: null, sessions: [] };
     host.onIntegrationState((snapshot) => {
       this.snapshot = snapshot;
       if (snapshot.resumed) {
-        const waiting = snapshot.sessions.find((event) => event.stage === 'waiting');
+        const waiting = this.visibleSessions().find((event) => event.stage === 'waiting');
         if (waiting) this.handle(waiting);
-        else if (!snapshot.sessions.some((event) => ['working', 'tool_failed'].includes(event.stage))) {
+        else if (!this.visibleSessions().some((event) => ['working', 'tool_failed'].includes(event.stage))) {
           this.panel.clearKind('alert'); this.panel.setTicker(null); this.capri.setMode('idle');
         }
       }
@@ -32,8 +35,8 @@ export class IntegrationCompanion {
       ready: 'Codex notifications are connected.', working: 'Codex is working.', waiting: 'Codex needs your approval. Review it in Codex.',
       tool_failed: 'A Codex tool reported an error.', completed: 'Codex finished its turn.', interrupted: 'The Codex turn was interrupted.', closed: 'The Codex session ended.',
     };
-    const active = this.snapshot.sessions.some((entry) => ['working', 'waiting', 'tool_failed'].includes(entry.stage));
-    if (event.stage !== 'waiting' && this.snapshot.sessions.some((entry) => entry.stage === 'waiting')) {
+    const active = this.visibleSessions().some((entry) => ['working', 'waiting', 'tool_failed'].includes(entry.stage));
+    if (event.stage !== 'waiting' && this.visibleSessions().some((entry) => entry.stage === 'waiting')) {
       this.capri.setMode('alert');
       return; // another turn still needs its approval prompt
     }

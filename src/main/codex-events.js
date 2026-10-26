@@ -31,6 +31,11 @@ class CodexEvents {
   constructor() { this.sessions = new Map(); this.seen = new Set(); this.lastSeen = null; }
   accept(input) {
     const event = normalize(input);
+    // Test fixtures must never keep the real companion in its working state.
+    if (event.demo && this.lastSeen) return null;
+    if (!event.demo) {
+      for (const [id, entry] of this.sessions) if (entry.demo) this.sessions.delete(id);
+    }
     if (this.seen.has(event.id)) return null;
     this.seen.add(event.id);
     if (this.seen.size > 512) this.seen.delete(this.seen.values().next().value);

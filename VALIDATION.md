@@ -33,3 +33,7 @@ The installed Codex CLI reports version 0.164.0-alpha.11.1 and ChatGPT sign-in. 
 All eight hook definitions were confirmed trusted and enabled. The user’s app-bundled 0.164.0-alpha.11.1 terminal completed test prompts but did not launch the forwarder in this environment. Installing the complete official @openai/codex 0.164.0 package separately and launching it in a terminal with TERM cleared produced a genuine, non-test completion delivery (HTTP 200). The user confirmed that Capri visibly reacted. No account credentials or trust state were replaced. Desktop-app-originated events remain unverified.
 
 Added an authenticated read-only receiver status endpoint and a bounded last-delivery diagnostic file without conversation content. Smoke tests use their own profile and connection file so they can run without stopping the live companion.
+
+## Working-label cleanup
+
+Fixed a state-isolation bug where an unfinished diagnostic fixture could keep the CODEX ticker visible after a genuine turn completed. Real events now remove test-only state, and test fixtures cannot enter an already-live connection. The renderer also excludes test state from real activity decisions. Ten tests pass, including a regression for an unfinished test task followed by a real task completion. The currently running older build needs a normal restart to load this change.

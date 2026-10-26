@@ -33,6 +33,17 @@ test('event state deduplicates and cannot resurrect a completed turn with late b
   assert.throws(() => state.accept({ provider: 'chatgpt' }), /Invalid/);
 });
 
+test('unfinished test activity cannot keep a real completed task looking busy', () => {
+  const state = new CodexEvents();
+  const make = (event, session, turn) => fromHook({ hook_event_name: event, session_id: session, turn_id: turn });
+  state.accept({ ...make('UserPromptSubmit', 'test', 'test'), demo: true });
+  state.accept(make('UserPromptSubmit', 'real', 'real'));
+  state.accept(make('Stop', 'real', 'real'));
+  assert.equal(state.snapshot().sessions.some((event) => event.stage === 'working'), false);
+  assert.equal(state.snapshot().sessions.some((event) => event.demo), false);
+  assert.equal(state.accept({ ...make('UserPromptSubmit', 'late-test', 'test'), demo: true }), null);
+});
+
 test('installer preserves unrelated hooks, backs up, is idempotent and removes only its own handlers', () => {
   const before = process.env.CODEX_HOME;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'caprigpt-hook-test-'));
