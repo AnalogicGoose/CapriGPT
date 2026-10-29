@@ -1,7 +1,6 @@
 'use strict';
 
-// Local HTTP bridge. Claude Code hooks POST their event JSON to /event,
-// we hand it to the overlay. Bound to 127.0.0.1 only.
+// Local authenticated Codex notifications and development bridge. Loopback only.
 
 const http = require('node:http');
 const { timingSafeEqual } = require('node:crypto');
@@ -38,7 +37,7 @@ function readJson(req) {
   });
 }
 
-function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent, onIntegrationStatus }) {
+function createBridge({ port, onDebug, integrationToken, onCodexEvent, onIntegrationStatus }) {
   const server = http.createServer(async (req, res) => {
     // Browsers always send an Origin header on cross-site requests; hooks never do.
     // Refusing those keeps random web pages from puppeting Capri.
@@ -51,7 +50,10 @@ function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent, 
       const supplied = Buffer.from(String(req.headers.authorization || ''));
       const expected = Buffer.from(`Bearer ${integrationToken || ''}`);
       if (!integrationToken || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return send(res, 403, { ok: false });
-      if (req.method === 'GET') return send(res, 200, onIntegrationStatus?.() || {});
+      if (req.method === 'GET') {
+        try { return send(res, 200, await onIntegrationStatus?.({ verifyContext: url.searchParams.get('verifyContext') === '1' }) || {}); }
+        catch { return send(res, 500, { ok: false, error: 'Status unavailable' }); }
+      }
       try {
         const event = await readJson(req);
         const accepted = onCodexEvent?.(event);
@@ -61,19 +63,6 @@ function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent, 
 
     if (req.method === 'GET' && url.pathname === '/health') {
       return send(res, 200, { ok: true, name: 'capri', pid: process.pid });
-    }
-
-    if (req.method === 'POST' && url.pathname === '/event') {
-      try {
-        const evt = await readJson(req);
-        if (!evt || typeof evt !== 'object' || typeof evt.hook_event_name !== 'string') {
-          return send(res, 400, { ok: false, error: 'missing hook_event_name' });
-        }
-        onEvent(evt);
-        return send(res, 200, { ok: true });
-      } catch (err) {
-        return send(res, 400, { ok: false, error: err.message });
-      }
     }
 
     if (onDebug && url.pathname.startsWith('/debug/')) {
@@ -90,7 +79,7 @@ function createBridge({ port, onEvent, onDebug, integrationToken, onCodexEvent, 
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`[capri] port ${port} already in use, Claude events will not reach this instance`);
+      console.error(`[capri] port ${port} already in use, notifications will not reach this instance`);
     } else {
       console.error('[capri] bridge error:', err.message);
     }

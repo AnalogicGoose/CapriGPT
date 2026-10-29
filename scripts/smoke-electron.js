@@ -1,6 +1,6 @@
 'use strict';
 // Run with npm run test:desktop. Exercises our own app via its preload IPC API.
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
@@ -11,6 +11,57 @@ const scratch = path.resolve(__dirname, '../../../work');
 fs.mkdirSync(scratch, { recursive: true });
 process.env.CAPRIGPT_TEST_PROFILE = fs.mkdtempSync(path.join(scratch, 'caprigpt-smoke-'));
 process.env.CAPRIGPT_CONNECTION_FILE = path.join(process.env.CAPRIGPT_TEST_PROFILE, 'integration.json');
+if (process.argv.includes('--conversation-only')) {
+  require('../src/main/ollama-runtime').executable = () => null;
+  require('../src/main/ollama').models = async () => ['qwen3.5:9b'];
+  require('../src/main/native-windows').foregroundBounds = () => null;
+}
+if (process.argv.includes('--fullscreen-only') || process.argv.includes('--memory-only') || process.argv.includes('--foreground-priority') || process.argv.includes('--memory-language-only') || process.argv.includes('--agent-only') || process.argv.includes('--settings-only') || process.argv.includes('--settings-pointer') || process.argv.includes('--tasks-only') || process.argv.includes('--playback-live') || process.argv.includes('--firefox-live') || process.argv.includes('--chrome-context-live')) {
+  // Isolated profile, no server startup, model or real dialogs.
+  require('../src/main/ollama-runtime').executable = () => null;
+  require('../src/main/ollama').models = async () => [];
+}
+const taskEffects={apps:[],opened:[],played:[]};
+const speechSessions=[];
+let speechService;
+if(process.argv.includes('--speech-whisper-live')) {
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+  app.commandLine.appendSwitch('use-file-for-fake-audio-capture',path.resolve(__dirname,'../.caprigpt-local/speech-check/recorded-english.wav')+'%noloop');
+  require('../src/main/ollama-runtime').executable=()=>null;
+  require('../src/main/ollama').models=async()=>[];
+  const module=require('../src/main/speech'),Original=module.SpeechInput;
+  module.SpeechInput=class extends Original {constructor(options){super(options);speechService=this;}};
+}
+if(process.argv.includes('--speech-only')) {
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream');
+  app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+  require('../src/main/ollama-runtime').executable=()=>null;
+  require('../src/main/ollama').models=async()=>[];
+  const module=require('../src/main/speech'),Original=module.SpeechInput;
+  const engine={device:'GPU',start:()=>new Promise(resolve=>speechSessions.push({ready:resolve,responses:[],stopped:false})),
+    stop:()=>{if(speechSessions.length)speechSessions.at(-1).stopped=true;},
+    transcribe:async()=>speechSessions.at(-1).responses.shift()||''};
+  module.SpeechInput=class extends Original {constructor(options){super({...options,engine});speechService=this;}};
+}
+let fullscreenProbe = null;
+if (process.argv.includes('--fullscreen-only') || process.argv.includes('--speech-only')) require('../src/main/native-windows').foregroundBounds = () => fullscreenProbe;
+let priorityTestAgent;
+if(process.argv.includes('--foreground-priority')) {
+  const module=require('../src/main/agent'),Original=module.Agent;
+  module.Agent=class extends Original {constructor(options){super(options);priorityTestAgent=this;}};
+}
+if(process.argv.includes('--tasks-only')) {
+  const {WebTools}=require('../src/main/web-tools');
+  WebTools.prototype.steam=async()=>({type:'steam',items:[{title:'Test Game',discount:75,price:5,currency:'USD',url:'https://store.steampowered.com/app/10/'}]});
+  WebTools.prototype.search=async()=>({type:'news',items:[{title:'A current AI headline',published:'2026-10-28T00:00:00Z',url:'https://news.google.com/rss/articles/test'}]});
+  WebTools.prototype.youtube=async()=>({type:'youtube',items:[{title:'A verified newest upload',channel:'Rubius Z',videoId:'abcdefghijk',url:'https://www.youtube.com/watch?v=abcdefghijk'}]});
+  require('../src/main/desktop-tools').DesktopTools.prototype.open=async name=>{taskEffects.apps.push(name);return {type:'app',note:'File Explorer has a visible desktop window.'};};
+  require('../src/main/agent-browser').createAgentBrowser=()=>({
+    open:async url=>{taskEffects.opened.push(url);return {opened:true,url};},
+    play:async item=>{taskEffects.played.push(item.videoId);return {...item,playing:true};},stop(){},
+  });
+}
 require('../src/main/main');
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const limit = setTimeout(() => { console.error('Desktop smoke test timed out'); app.exit(1); }, 150000);
@@ -21,6 +72,577 @@ app.whenReady().then(async () => {
     const js = (source) => win.webContents.executeJavaScript(source);
     for (let i = 0; i < 120 && !await js("document.documentElement.dataset.caprigptReady === 'true'"); i++) await pause(500);
     assert.equal(await js("document.documentElement.dataset.caprigptReady"), 'true');
+    if (process.argv.includes('--conversation-only')) {
+      const requests = [];
+      const originalFetch = global.fetch;
+      const answer = 'Here is the function:\n\n```python\ndef my_func(user_name):\n    return "Hi " + user_name\n```\n\n' + 'A useful explanation with a separate step.\n'.repeat(16);
+      global.fetch = async (url, options) => {
+        if (url === `${require('../src/main/ollama').base()}/api/show`) return Response.json({ details: { parameter_size: '9B', context_length: 262144 } });
+        if (url === `${require('../src/main/ollama').base()}/api/chat`) {
+          requests.push(JSON.parse(options.body));
+          return new Response(JSON.stringify({ message: { content: answer }, done: true }) + '\n');
+        }
+        return originalFetch(url, options);
+      };
+      await js('host.setConfig({lang:"en",privacy:{memoryEnabled:false,contextEvents:false,contextTime:false,contextForeground:false,contextProcesses:false,contextPower:false,contextPerformance:false}})');
+      win.webContents.send('capri:command', { name: 'chat' });
+      for (let i = 0; i < 60 && !await js("document.querySelector('#panel').classList.contains('is-chat')"); i++) await pause(50);
+      assert.equal(await js("document.querySelector('#panel').classList.contains('is-chat')"), true);
+      for (let i = 0; i < 18; i++) {
+        const text = i === 0 ? 'For this conversation the project codename is Orchid.' : `Discuss design detail ${i} of the layout.`;
+        await js(`document.querySelector('.panel__input').value=${JSON.stringify(text)}; document.querySelector('.panel__input').form.requestSubmit();`);
+        for (let tick = 0; tick < 100; tick++) {
+          if (requests.length === i + 1 && await js("!document.querySelector('.panel__input').disabled")) break;
+          await pause(30);
+        }
+        assert.equal(requests.length, i + 1);
+        assert.equal(await js("document.querySelector('.panel__line').textContent"), answer.trim());
+      }
+      assert.ok(requests.at(-1).messages.some(m => /project codename is Orchid/.test(m.content)));
+      assert.match(requests.at(-1).messages[0].content, /Current self-capability registry/);
+      assert.doesNotMatch(requests.at(-1).messages[0].content, /satellite/i);
+      assert.equal(requests.at(-1).options.num_ctx, 32768);
+      assert.equal(requests.at(-1).options.num_predict, 1536);
+      const layout = await js(`(() => { const line=document.querySelector('.panel__line'); return {whiteSpace:getComputedStyle(line).whiteSpace,scrolls:line.scrollHeight>line.clientHeight,overflow:getComputedStyle(line).overflowY}; })()`);
+      assert.equal(layout.whiteSpace, 'pre-wrap'); assert.equal(layout.scrolls, true); assert.equal(layout.overflow, 'auto');
+      console.log('PASS: actual Electron chat → local task routing → permitted context → capability registry → Ollama request → streamed UI, 18 turns, retained Orchid detail, intact code/indentation and scrollable long answers. Inference mocked; isolated profile.');
+      clearTimeout(limit); app.exit(0); return;
+    }
+    if(process.argv.includes('--speech-whisper-live')) {
+      const until=async(check,label)=>{for(let i=0;i<700;i++){if(await check())return;await pause(50);}throw Error('Timed out: '+label);};
+      win.webContents.on('console-message',event=>{if(event.level==='error')console.error(event.message);});
+      await js("host.setConfig({lang:'en'})");win.webContents.send('capri:command',{name:'memory'});
+      await until(()=>js("document.querySelector('#panel').classList.contains('is-chat')"),'chat');
+      await js("document.querySelector('.panel__input').value='';document.querySelector('.panel__mic').click()");
+      await until(()=>js("/apostle.*middle classes/i.test(document.querySelector('.panel__input').value)"),'actual Whisper transcript through browser audio pipeline');
+      await js("document.querySelector('.panel__mic').click()");
+      await until(()=>js("!document.querySelector('.panel__input').readOnly"),'microphone stop and final decode');
+      assert.equal(speechService.current,null);assert.equal(speechService.engine.child,null);
+      const draft=await js("document.querySelector('.panel__input').value");assert.match(draft,/gospel/i);
+      assert.match(draft,/gospel[.!]?\s*$/i,'End-of-recording silence must not add an invented phrase');
+      assert.match(await js("document.querySelector('.panel__line').textContent"),/Use \/memory/,'Speech did not auto-send');
+      console.log('PASS: real recorded English → Chromium default fake microphone → AudioWorklet PCM → speech segmentation → local GPU Whisper/Silero → draft, final flush and model release. User microphone not opened.');
+      console.log('Public-fixture transcript:',draft);clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--speech-only')) {
+      const until=async(check,label)=>{for(let i=0;i<200;i++){if(await check())return;await pause(20);}throw Error('Timed out: '+label);};
+      win.webContents.on('console-message',event=>{if(event.level==='error')console.error(event.message);});
+      await js("host.setConfig({lang:'en'})");win.webContents.send('capri:command',{name:'memory'});
+      await until(()=>js("document.querySelector('#panel').classList.contains('is-chat')"),'local chat');
+      const click=()=>js("document.querySelector('.panel__mic').click()");
+      const listening=()=>js("document.querySelector('.panel__dictation-status').textContent.includes('Listening')");
+      await js("const input=document.querySelector('.panel__input');input.value='Please';input.setSelectionRange(6,6)");
+      await click();await until(()=>speechSessions.length===1,'Whisper model startup');speechSessions[0].ready();
+      await until(listening,'fake default microphone and AudioWorklet open');
+      await until(()=>speechService.current?.total>0,'real PCM frames arrive through preload');
+      assert.equal(await js("document.querySelector('.panel__input').readOnly && document.querySelector('.panel__send').disabled"),true);
+      speechSessions[0].responses.push('tell me a story about robots');
+      speechService.enqueue(speechService.current,Buffer.alloc(9600));
+      await until(()=>js("document.querySelector('.panel__input').value === 'Please tell me a story about robots'"),'Whisper phrase in draft');
+      const capture=path.resolve(__dirname,'..','captures','speech-listening.png');fs.mkdirSync(path.dirname(capture),{recursive:true});
+      await pause(300);fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      await click();await until(()=>js("!document.querySelector('.panel__input').readOnly"),'stop and final audio flush');
+      assert.equal(speechSessions[0].stopped,true);
+      assert.equal(await js("document.querySelector('.panel__input').value"),'Please tell me a story about robots');
+      assert.match(await js("document.querySelector('.panel__line').textContent"),/Use \/memory/,'Dictation never submits');
+      await click();await until(()=>speechSessions.length===2,'second startup');await click();
+      await until(()=>speechSessions[1].stopped,'cancel model startup');speechSessions[1].ready();
+      await click();await until(()=>speechSessions.length===3,'fresh session');speechSessions[2].ready();await until(listening,'new capture');
+      await js("document.querySelector('.panel__close').click()");await until(()=>speechSessions[2].stopped,'chat close');
+      win.webContents.send('capri:command',{name:'memory'});
+      await until(()=>js("document.querySelector('#panel').classList.contains('is-chat') && !document.querySelector('#panel').hidden"),'reopen chat');
+      await click();await until(()=>speechSessions.length===4,'capture before Gaming mode');speechSessions[3].ready();await until(listening,'capture ready');
+      await js('host.setConfig({gamingMode:true})');await until(()=>speechSessions[3].stopped,'Gaming mode stops capture');
+      assert.equal((await js("host.speechStart({id:'blocked-session'})")).error,'speech-paused');
+      await js('host.setConfig({gamingMode:false})');
+      await click();await until(()=>speechSessions.length===5,'capture before fullscreen');speechSessions[4].ready();await until(listening,'capture ready');
+      fullscreenProbe={...require('electron').screen.dipToScreenRect(null,require('electron').screen.getPrimaryDisplay().bounds),pid:0,caption:false};
+      await until(()=>speechSessions[4].stopped,'fullscreen stops capture');
+      fullscreenProbe=null;await until(()=>js("!document.body.classList.contains('fullscreen-presence')"),'fullscreen return');
+      await click();await until(()=>speechSessions.length===6,'capture before Esc');speechSessions[5].ready();await until(listening,'capture ready');
+      await js("document.querySelector('.panel__input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+      await until(()=>js("!document.querySelector('.panel__input').readOnly"),'Esc stops dictation');
+      assert.equal(await js("!document.querySelector('#panel').hidden && document.querySelector('#panel').classList.contains('is-chat')"),true);
+      console.log('PASS: real default-device capture using Chromium fake audio, AudioWorklet, PCM IPC, phrase results, draft preservation, no auto-send, stop flush, rapid model startup cancellation, chat close, Gaming mode and fullscreen. Whisper inference mocked; real microphone never opened.');
+      console.log('CAPTURE:',capture);clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--fullscreen-only')) {
+      win.webContents.on('console-message',event=>{if(event.level==='error')console.error(event.message);});
+      const {screen}=require('electron');
+      const bounds=screen.dipToScreenRect(null,screen.getPrimaryDisplay().bounds);
+      const fullscreen={...bounds,pid:0,caption:false};
+      const until=async(check,label)=>{
+        for(let i=0;i<100;i++){if(await check())return;await pause(20);}
+        throw Error('Timed out: '+label);
+      };
+      const state=()=>js('host.fullscreenState()');
+      const shown=()=>js("document.querySelector('#capri').dataset.fullscreen === 'visible'");
+      const away=()=>js("document.querySelector('#capri').dataset.fullscreen === 'away'");
+      fullscreenProbe={...fullscreen,caption:true};await pause(100);
+      assert.equal((await state()).active,false,'Maximized captioned window is not fullscreen');
+      const started=Date.now();fullscreenProbe=fullscreen;
+      await until(async()=>(await state()).active,'native fullscreen probe');
+      const detectionMs=Date.now()-started;
+      await until(async()=>await away()&&!win.isVisible(),'teleport-out and OS overlay hide');
+      const oldRevision=(await state()).revision;
+      fullscreenProbe=null;
+      await until(async()=>await shown()&&win.isVisible(),'teleport back');
+      await js(`host.fullscreenRendered({revision:${oldRevision},hidden:true})`);await pause(300);
+      assert.equal(win.isVisible(),true,'Late departure acknowledgment cannot re-hide the returned pet');
+      for(let i=0;i<24;i++){fullscreenProbe=i%2?null:fullscreen;await pause(25);}
+      fullscreenProbe=null;
+      await until(async()=>!(await state()).active&&await shown()&&win.isVisible(),'rapid-toggle final visible state');
+      await pause(350);assert.equal(win.isVisible(),true,'No delayed hide after rapid toggles');
+      // Existing teleport effects may still be running when fullscreen reverses.
+      win.webContents.send('capri:command',{name:'teleport'});
+      fullscreenProbe=fullscreen;await pause(100);fullscreenProbe=null;
+      await until(async()=>await shown()&&win.isVisible(),'fullscreen while normal teleport is in progress');
+      await pause(800);
+      const paint=await js(`(() => {
+        const c=document.querySelector('#sprite');const gl=c.getContext('webgl');
+        const program=gl.getParameter(gl.CURRENT_PROGRAM);
+        return {hidden:document.querySelector('#capri').hidden,
+          opaque:gl.getUniform(program,gl.getUniformLocation(program,'uAlpha'))>0.5
+            && gl.getUniform(program,gl.getUniformLocation(program,'uCollapse'))===0};
+      })()`);
+      assert.equal(paint.hidden,false);assert.equal(paint.opaque,true,'Underlying teleport cannot leave her transparent');
+      require('../src/main/ollama').unload=async()=>{};
+      await js('host.openMenu()');
+      let controls;
+      await until(async()=>{
+        controls=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('settings.html'));
+        return controls&&!controls.webContents.isLoading()&&await controls.webContents.executeJavaScript('document.documentElement.dataset.settingsReady === "true"');
+      },'control room');
+      const gaming=on=>controls.webContents.executeJavaScript(`settingsHost.action('gaming',${on})`);
+      fullscreenProbe=fullscreen;await until(away,'fullscreen before gaming');
+      await gaming(true);assert.equal(win.isVisible(),false);
+      await gaming(false);assert.equal(win.isVisible(),false,'Resuming Gaming mode must not reveal Capri over fullscreen');
+      fullscreenProbe=null;
+      await until(async()=>await shown()&&win.isVisible(),'gaming resumes while fullscreen ends');
+      await gaming(true);
+      fullscreenProbe=fullscreen;await until(async()=>(await state()).active,'fullscreen during Gaming mode');
+      await gaming(false);assert.equal(win.isVisible(),false);
+      fullscreenProbe=null;await until(async()=>await shown()&&win.isVisible(),'gaming then fullscreen return');
+      await pause(400);
+      assert.equal(await js(`(() => {const gl=document.querySelector('#sprite').getContext('webgl');const p=gl.getParameter(gl.CURRENT_PROGRAM);return gl.getUniform(p,gl.getUniformLocation(p,'uAlpha'))>0.5;})()`),true,'Combined gaming/fullscreen transitions leave her visible');
+      fullscreenProbe=fullscreen;await until(away,'second departure');
+      await js('host.setConfig({visible:false})');
+      win.webContents.send('capri:command',{name:'stow',on:true});
+      await until(()=>js("document.querySelector('#capri').hidden"),'manual stow while fullscreen');
+      fullscreenProbe=null;
+      await until(async()=>await shown()&&win.isVisible(),'fullscreen ends with manually stowed pet');
+      assert.equal(await js("document.querySelector('#capri').hidden && !document.querySelector('#chip').hidden"),true,'Fullscreen does not undo manual stowing');
+      assert.equal((await js('host.getConfig()')).visible,false);
+      console.log(`PASS: actual fullscreen IPC/shader/OS visibility path with simulated native geometry; detection ${detectionMs} ms, rapid reversals, stale acknowledgments, overlapping teleport, Gaming mode and manual stow.`);
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--foreground-priority')) {
+      const ollama=require('../src/main/ollama');let entered,backgroundCalls=0,replyCalls=0,aborted=false;
+      const started=new Promise(resolve=>{entered=resolve;});
+      ollama.models=async()=>['qwen3.5:9b'];
+      ollama.chat=async(request,delta,signal)=>{
+        if(request.schema){backgroundCalls++;entered();await new Promise((resolve,reject)=>signal.addEventListener('abort',()=>{aborted=true;reject(Error('cancelled'));},{once:true}));}
+        replyCalls++;assert.match(request.messages[0].content,/Gabriel/);
+        assert.equal(await priorityTestAgent.run('','foreground-change'),'Foreground request has priority');
+        return 'You are Gabriel, and you live in Nicaragua.';
+      };
+      await js('host.setConfig({privacy:{memoryEnabled:true,memoryConfirmChanges:true,contextEvents:false}})');
+      const {MemoryStore}=require('../src/main/memory');
+      const store=new MemoryStore(path.join(process.env.CAPRIGPT_TEST_PROFILE,'personal-memory.sqlite'));
+      store.remember('Gabriel lives in Nicaragua.','explicit',{profile:true});store.close();
+      win.webContents.send('capri:command',{name:'chat'});
+      for(let i=0;i<80&&!await js("document.querySelector('#panel').classList.contains('is-chat')");i++)await pause(100);
+      const background=priorityTestAgent.run('','resume');await started;
+      await js("document.querySelector('.panel__input').value='what do you know about me?';document.querySelector('.panel__chat').requestSubmit()");
+      for(let i=0;i<100&&await js("document.querySelector('.panel__input').disabled");i++)await pause(100);
+      const answer=await js("document.querySelector('.panel__line').textContent");
+      assert.match(answer,/Gabriel/);assert.match(answer,/Nicaragua/);assert.doesNotMatch(answer,/One local reply|Lost the signal/);
+      assert.equal(backgroundCalls,1);assert.equal(replyCalls,1);assert.equal(aborted,true);await background;
+      const capture=path.resolve(__dirname,'..','captures','foreground-priority.png');fs.mkdirSync(path.dirname(capture),{recursive:true});fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      console.log('PASS: real chat question interrupts a deliberately busy background decision, recalls the isolated saved profile, answers successfully and blocks a competing event. Model responses mocked.');
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--memory-language-only')) {
+      const {dialog}=require('electron');let reviews=0,modelCalls=0,details='';
+      dialog.showMessageBox=async()=>{reviews++;throw Error('Requested memory changes must not open a confirmation.');};
+      const ollama=require('../src/main/ollama');ollama.models=async()=>['qwen3.5:9b'];
+      ollama.chat=async request=>{
+        modelCalls++;const data=JSON.parse(request.messages.at(-1).content);
+        assert.equal(data.request,'forget about wow. remember i like games and cool coding stuff');
+        const row=data.memories.find(row=>/WoW/.test(row.text));assert.ok(row);
+        return JSON.stringify({intent:'change',message:'',selectedIds:[],changes:[
+          {kind:'edit',id:row.id,text:'Uses English and Spanish. Plays Cyberpunk 2077.'},
+          {kind:'add',id:0,text:'I like games and cool coding stuff.'},
+        ]});
+      };
+      await js('host.setConfig({privacy:{memoryEnabled:true,memoryConfirmChanges:false,contextEvents:false}})');
+      assert.match((await js('host.personalRoute("remember Uses English and Spanish. Plays Cyberpunk 2077 and WoW.")')).text,/Saved/);
+      win.webContents.send('capri:command',{name:'chat'});
+      for(let i=0;i<80&&!await js("document.querySelector('#panel').classList.contains('is-chat')");i++)await pause(100);
+      await js("document.querySelector('.panel__input').value='forget about wow. remember i like games and cool coding stuff';document.querySelector('.panel__chat').requestSubmit()");
+      for(let i=0;i<100&&await js("document.querySelector('.panel__input').disabled");i++)await pause(100);
+      const answer=await js("document.querySelector('.panel__line').textContent");
+      assert.match(answer,/Updated: Uses English and Spanish/);assert.match(answer,/Remembered: I like games/);assert.doesNotMatch(answer,/Local commands:/);
+      assert.equal(reviews,0);assert.equal(modelCalls,1);
+      const saved=await js('host.personalRoute("/memory list")');assert.doesNotMatch(saved.text,/WoW/);assert.match(saved.text,/Cyberpunk/);assert.match(saved.text,/cool coding stuff/);
+      const capture=path.resolve(__dirname,'..','captures','memory-language.png');fs.mkdirSync(path.dirname(capture),{recursive:true});fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      console.log('PASS: real chat → semantic memory interpreter → SQLite topic edit and preference save, with zero confirmation dialogs. Model responses mocked, real user profile untouched.');
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--firefox-live')||process.argv.includes('--chrome-context-live')) {
+      const chrome=process.argv.includes('--chrome-context-live');
+      const ollama=require('../src/main/ollama');let modelCalls=0;
+      ollama.models=async()=>['qwen3.5:9b'];
+      ollama.chat=async()=>{modelCalls++;throw Error('Known app requests must bypass model text.');};
+      await js('host.setConfig({privacy:{contextEvents:false}})');
+      win.webContents.send('capri:command',{name:'chat'});
+      for(let i=0;i<80&&!await js("document.querySelector('#panel').classList.contains('is-chat')");i++)await pause(100);
+      const submit=text=>js(`document.querySelector('.panel__input').value=${JSON.stringify(text)};document.querySelector('.panel__chat').requestSubmit()`);
+      await submit('can you open my browser?');
+      for(let i=0;i<60&&await js("document.querySelector('.panel__input').disabled");i++)await pause(100);
+      assert.match(await js("document.querySelector('.panel__line').textContent"),/Which browser/);
+      await submit(chrome?'open Chrome':'firefox');
+      for(let i=0;i<100&&await js("document.querySelector('.panel__input').disabled");i++)await pause(100);
+      assert.match(await js("document.querySelector('.panel__line').textContent"),chrome?/Google Chrome has a visible desktop window/:/Firefox has a visible desktop window/);
+      assert.equal(modelCalls,0);
+      const capture=path.resolve(__dirname,'..','captures',chrome?'chrome-launch.png':'firefox-launch.png');fs.mkdirSync(path.dirname(capture),{recursive:true});fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      console.log(`PASS: real chat asks which browser, then launches installed ${chrome?'Chrome':'Firefox'}, verifies a visible window, with zero model calls.`);
+      console.log('CAPTURE:',capture);
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--tasks-ui-live')) {
+      await js('host.setConfig({privacy:{contextEvents:false}})');
+      win.webContents.send('capri:command',{name:'chat'});
+      for(let i=0;i<80&&!await js("document.querySelector('#panel').classList.contains('is-chat')");i++)await pause(100);
+      assert.equal(await js("document.querySelector('#panel').classList.contains('is-chat')"),true);
+      await js("document.querySelector('.panel__input').value='capri look for the best discounts in steam';document.querySelector('.panel__chat').requestSubmit()");
+      for(let i=0;i<180;i++) {
+        if(!await js("document.querySelector('.panel__input').disabled")&&await js("document.querySelector('.panel__line').textContent.includes('Current featured Steam')"))break;
+        await pause(500);
+      }
+      assert.match(await js("document.querySelector('.panel__line').textContent"),/Current featured Steam discounts/);
+      assert.ok(await js("document.querySelectorAll('.panel__actions [data-id^=source-]').length > 0"));
+      // A planner may already have opened a source. Remove only this isolated
+      // test's browser windows so a broken source-button handler cannot pass.
+      for(const page of BrowserWindow.getAllWindows().filter(w=>w!==win))page.destroy();
+      await pause(100);
+      const bounds=await js("(()=>{const r=document.querySelector('.panel__actions [data-id^=source-]').getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()");
+      win.webContents.sendInputEvent({type:'mouseMove',...bounds});
+      win.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,...bounds});
+      win.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,...bounds});
+      let source;
+      for(let i=0;i<100;i++) {
+        source=BrowserWindow.getAllWindows().find(w=>w!==win&&w.webContents.getURL().includes('store.steampowered.com'));
+        if(source&&!source.webContents.isLoadingMainFrame())break;await pause(200);
+      }
+      assert.ok(source,'A source button must open the observed Steam page in the real browser');
+      assert.equal(await source.webContents.executeJavaScript('typeof window.host'),'undefined');
+      const capture=path.resolve(__dirname,'..','captures','task-steam-live.png');fs.mkdirSync(path.dirname(capture),{recursive:true});fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      console.log('PASS: real chat UI → Qwen planner → live Steam data → source button via trusted mouse events → real Steam page, with no privileged preload in remote page');
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--tasks-only')) {
+      const ollama=require('../src/main/ollama');
+      ollama.models=async()=>['qwen3.5:9b'];
+      ollama.chat=async({messages},_delta,signal)=>{
+        signal?.throwIfAborted();const data=JSON.parse(messages.at(-1).content);const goal=data.goal;
+        const step=(tool,query='',index=0)=>({tool,query,index});
+        const steps=/steam/i.test(goal)?[step('steam_deals')]:/news/i.test(goal)?[step('search_news','AI models')]:/rubius/i.test(goal)?[step('youtube_latest','rubius'),step('play_video')]:[];
+        return JSON.stringify({message:'unsupported',steps});
+      };
+      const route=text=>js(`host.personalRoute(${JSON.stringify(text)},808)`);
+      assert.match((await route('capri open file explorer')).text,/visible desktop window/);assert.deepEqual(taskEffects.apps,['File Explorer']);
+      assert.match((await route('capri play the newest rubius video in youtube')).text,/^Playing/);assert.deepEqual(taskEffects.played,['abcdefghijk']);
+      assert.match((await route('capri look for the latest news of ai models')).text,/Fresh headlines/);
+      win.webContents.send('capri:command',{name:'memory'});await pause(400);
+      await js("document.querySelector('.panel__input').value='capri look for the best discounts in steam'; document.querySelector('.panel__chat').requestSubmit()");
+      for(let i=0;i<60 && !await js("document.querySelector('.panel__line').textContent.includes('Current featured Steam')");i++)await pause(100);
+      assert.match(await js("document.querySelector('.panel__line').textContent"),/75% · 5.00 USD/);
+      assert.equal(await js("document.querySelectorAll('.panel__actions [data-id^=source-]').length"),1);
+      await js("document.querySelector('.panel__actions [data-id=source-0]').click()");await pause(100);
+      assert.deepEqual(taskEffects.opened,['https://store.steampowered.com/app/10/']);
+      assert.equal((await js('host.openTaskResult("ffffffffffffffff")')).ok,false);
+      let ready;const started=new Promise(resolve=>{ready=resolve;});
+      ollama.chat=async(_request,_delta,signal)=>{ready();return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));};
+      await js("window.pendingTask=host.personalRoute('search web for AI models',909);true");await started;
+      await js('host.chatStop(909)');assert.match((await js('window.pendingTask')).text,/Task stopped/);
+      const capture=path.resolve(__dirname,'..','captures','task-steam.png');fs.mkdirSync(path.dirname(capture),{recursive:true});fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      console.log('PASS: natural-language task routing, validated planner, app launch, newest video/playback results, news, Steam prices, clickable source, cancellation and expired/unknown source rejection (effects mocked)');
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if(process.argv.includes('--playback-live')) {
+      await js('host.setConfig({agentEnabled:false})');
+      const native=require('../src/main/native-windows');const {shell}=require('electron');
+      const before=new Set(native.desktopApps().filter(a=>a.name==='explorer').flatMap(a=>a.handles));
+      const desktop=new(require('../src/main/desktop-tools').DesktopTools)({openPath:file=>shell.openPath(file),native});
+      const opened=await desktop.open('File Explorer');assert.equal(opened.launchRequested,true);assert.equal(opened.windowObserved,true,opened.note);
+      console.log('PASS: real File Explorer launch and native window verification');
+      const {WebTools}=require('../src/main/web-tools');const found=await new WebTools().youtube('rubius');
+      const browser=require('../src/main/agent-browser').createAgentBrowser();
+      const result=await browser.play(found.items[0],AbortSignal.timeout(65000));
+      assert.equal(result.opened,true);assert.equal(typeof result.playing,'boolean');
+      const remote=BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('youtube.com/watch'));
+      assert.ok(remote);assert.equal(remote.webContents.getLastWebPreferences().nodeIntegration,false);
+      const capture=path.resolve(__dirname,'..','captures','youtube-playback.png');fs.mkdirSync(path.dirname(capture),{recursive:true});fs.writeFileSync(capture,(await remote.webContents.capturePage()).toPNG());
+      console.log(result.playing?'PASS: real latest Rubius upload playback verified by advancing video time':'OBSERVED: video page opened; playback blocked or not verified. '+result.note);
+      browser.stop();
+      const created=native.desktopApps().filter(a=>a.name==='explorer').flatMap(a=>a.handles).filter(handle=>!before.has(handle));native.requestClose(created);
+      clearTimeout(limit);app.exit(0);return;
+    }
+    if (process.argv.includes('--settings-only') || process.argv.includes('--settings-pointer')) {
+      // Settings checks must not unload models from the user's running Ollama server.
+      require('../src/main/ollama').unload = async () => {};
+      assert.equal(await js(`(() => {
+        const canvas=document.querySelector('.panel__face canvas');
+        return Boolean(canvas && canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data.some(value=>value>0));
+      })()`),true,'Animated portrait loads and paints through the production app protocol');
+      await js('host.openMenu()');
+      let controls;
+      for (let i=0;i<60;i++) {
+        controls = BrowserWindow.getAllWindows().find(w=>w.webContents.getURL().includes('settings.html'));
+        if (controls && !controls.webContents.isLoading() && await controls.webContents.executeJavaScript('document.documentElement.dataset.settingsReady === "true"')) break;
+        await pause(100);
+      }
+      assert.ok(controls);
+      controls.show(); // Explicitly show after readiness, including hidden test-process launches.
+      const run = source => controls.webContents.executeJavaScript(source);
+      assert.equal(await run('document.documentElement.dataset.settingsReady'), 'true');
+      assert.equal(await run('document.querySelector("main").dataset.page'),'home');
+      if (process.argv.includes('--settings-pointer')) {
+        await run('window.realClicks=0; document.addEventListener("pointerdown",event=>{if(event.isTrusted) window.realClicks++;})');
+        console.log('READY: use real pointer input to select Appearance/Large and Sound/Mute.');
+        for (let i=0;i<180;i++) {
+          const cfg = await js('host.getConfig()');
+          if (cfg.scale===0.8 && cfg.muted && await run('window.realClicks >= 4')) {
+            console.log('PASS: real pointer clicks changed character size and mute with the content layout marker present.');
+            clearTimeout(limit); app.exit(0); return;
+          }
+          await pause(500);
+        }
+        throw Error('Real pointer test did not complete.');
+      }
+      const mainErrors = [];
+      controls.webContents.on('console-message', e => { if(e.level==='error') mainErrors.push(e.message); });
+      assert.equal(controls.isMenuBarVisible(), false);
+      assert.equal(await run('typeof window.host'), 'undefined', 'Settings window gets only its own narrow API');
+      assert.equal(await js('typeof host.installHooks'), 'undefined');
+      assert.equal(await js('typeof host.chatHandoff'), 'undefined');
+      assert.equal((await js('host.getConfig()')).agentEnabled, true);
+      assert.equal((await js('host.getConfig()')).desktopActions, true);
+      const legacy = await fetch('http://127.0.0.1:47824/event',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({hook_event_name:'Stop'})});
+      assert.equal(legacy.status,404,'Legacy unauthenticated Claude events must no longer be accepted');
+      await run("document.querySelector('[data-page=appearance]').click()");
+      await run("document.querySelector('[data-scale=\"0.8\"]').click()"); await pause(200);
+      assert.equal((await js('host.getConfig()')).scale,0.8);
+      await run("document.querySelector('[data-page=sound]').click(); const el=document.querySelector('[data-key=volume]'); el.value='35'; el.dispatchEvent(new Event('change',{bubbles:true}))"); await pause(200);
+      assert.equal((await js('host.getConfig()')).volume,0.35);
+      await assert.rejects(run('settingsHost.patch({agentEnabled:false})'), /Unknown/);
+      await assert.rejects(run('settingsHost.action("shell", "bad")'), /Unknown/);
+      const captureDir = path.resolve(__dirname,'..','captures');fs.mkdirSync(captureDir,{recursive:true});
+      for (const page of ['home','appearance','sound','memory','awareness','connections','updates']) {
+        await run(`document.querySelector('[data-page=${page}]').click(); document.fonts.ready`);
+        assert.equal(await run('document.querySelector("main").scrollWidth <= document.querySelector("main").clientWidth'),true, `Horizontal overflow on ${page}`);
+        await pause(100);
+        fs.writeFileSync(path.join(captureDir,`settings-${page}.png`),(await controls.webContents.capturePage()).toPNG());
+      }
+      assert.doesNotMatch(await run('document.body.innerText'), /Legacy Claude|Teleport|Play demo|Talk to her|Copy chat handoff|Allow app closing/);
+      await run("document.querySelector('[data-page=home]').click()");
+      let departures = 0;
+      const departed = () => { departures++; };
+      require('electron').ipcMain.on('gaming:animation-ready', departed);
+      await run("document.querySelector('[data-action-switch=gaming]').click()");
+      for (let i=0;i<30 && win.isVisible();i++) await pause(50);
+      assert.equal((await js('host.getConfig()')).gamingMode,true); assert.equal(win.isVisible(),false);
+      assert.equal(departures,1,'Renderer acknowledges the gaming departure before hiding');
+      assert.equal(await js("document.querySelector('#capri').dataset.gamingTeleport"),'away');
+      require('electron').ipcMain.removeListener('gaming:animation-ready', departed);
+      assert.equal(controls.isVisible(),true,'Controls remain accessible while Capri is paused');
+      await run("document.querySelector('[data-action-switch=gaming]').click()"); await pause(300);
+      assert.equal((await js('host.getConfig()')).gamingMode,false); assert.equal(win.isVisible(),true);
+      for(let i=0;i<30 && await js("document.querySelector('#capri').dataset.gamingTeleport !== 'returned'");i++) await pause(50);
+      assert.equal(await js("document.querySelector('#capri').dataset.gamingTeleport"),'returned','Resume completes the teleport arrival');
+      await run("document.querySelector('#close').click()"); await pause(100); assert.equal(controls.isVisible(),false);
+      await js('host.openMenu()'); await pause(150); assert.equal(controls.isVisible(),true);
+      assert.deepEqual(mainErrors,[]);
+      console.log('PASS: custom control room, all seven sections, saved appearance/sound, narrow settings permissions, removed legacy controls, gaming pause/resume, close/reopen');
+      console.log('CAPTURES:', captureDir);
+      clearTimeout(limit); app.exit(0); return;
+    }
+    if (process.argv.includes('--agent-only')) {
+      const route = text => js(`host.personalRoute(${JSON.stringify(text)})`);
+      const ollama = require('../src/main/ollama');
+      const { dialog } = require('electron');
+      const apps = require('../src/main/apps');
+      let accepted = false, closed = 0, inferred = 0;
+      dialog.showMessageBox = async options => { assert.equal(options.defaultId, 0); return { response: accepted ? 1 : 0 }; };
+      apps.list = async () => [{ process: 'notepad', name: 'notepad' }];
+      apps.close = async () => { closed++; return { running: false }; };
+      ollama.models = async () => ['qwen3.5:9b'];
+      ollama.chat = async ({ messages, schema }) => {
+        inferred++;
+        assert.match(messages[0].content, /modifiable local Windows AI agent/);
+        if (!schema) return 'I’m Capri, your local agent.';
+        assert.match(messages[1].content, /observedAt/);
+        return JSON.stringify({ kind: 'propose_close', app: 'notepad', message: 'Close Notepad?' });
+      };
+      assert.equal(JSON.parse((await route('/agent status')).text).model, 'qwen3.5:9b');
+      await route('/agent think close notepad');
+      let id = JSON.parse((await route('/agent status')).text).pending.id;
+      assert.equal(closed, 0);
+      assert.match((await route(`/agent approve ${id}`)).text, /Cancelled/);
+      assert.equal(closed, 0);
+      await route('/agent think close notepad');
+      id = JSON.parse((await route('/agent status')).text).pending.id;
+      accepted = true;
+      assert.equal((await route(`/agent approve ${id}`)).text, 'App closed.');
+      await route(`/agent approve ${id}`); assert.equal(closed, 1);
+      assert.equal((await js('host.chatSend({id:707,messages:[{role:"system",content:"Capri"},{role:"user",content:"Who are you?"}]})')).ok, true);
+      assert.equal(inferred, 3);
+      ollama.chat = async (_request, _delta, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+      });
+      await js("window.pendingAgentTest=host.personalRoute('/agent think suggest help'); true");
+      for (let i=0;i<30 && !JSON.parse((await route('/agent status')).text).busy;i++) await pause(50);
+      assert.equal(JSON.parse((await route('/agent status')).text).busy, true);
+      await pause(100); // allow the bounded native snapshot to reach inference
+      await js('host.chatStop(707)');
+      await js('window.pendingAgentTest');
+      assert.equal(JSON.parse((await route('/agent status')).text).busy, false);
+      assert.equal(JSON.parse((await route('/agent status')).text).pending, null);
+      // Observe the actual existing Capri instance through its shared prototype.
+      await js(`(async () => {
+        const { Capri } = await import('./js/capri.js');
+        const original = Capri.prototype.setStance;
+        Capri.prototype.setStance = function(...args) { const r=original.apply(this,args); window.sittingProbe={stance:this.stance,perch:this.perch}; return r; };
+      })()`);
+      await js('host.setConfig({windowTracking:true,agentEnabled:false,wander:false,possess:false})');
+      const b = win.getBounds();
+      const fixture = new BrowserWindow({ x: b.x+160, y:b.y+Math.round(b.height*0.55), width:720, height:300,
+        show:false, title:'Capri perching regression fixture', backgroundColor:'#282239' });
+      await fixture.loadURL('data:text/html,<body style="color:white;font:22px sans-serif">Capri window sitting test</body>');
+      fixture.showInactive();
+      await pause(700);
+      const handle = fixture.getNativeWindowHandle().readBigUInt64LE(0);
+      const rows = await js('host.windowsNow()');
+      const row = rows.wins.find(w => w.id === Number(handle));
+      assert.ok(row, 'Real native geometry watcher must find the test window');
+      assert.equal(win.isAlwaysOnTop(), true);
+      await js(`(async () => {const {Capri}=await import('./js/capri.js'); if(!Capri.prototype.canSit.call({scale:0.6,view:{h:innerHeight}},${JSON.stringify(row)})) throw Error('Test window not sittable');})()`);
+      win.webContents.send('capri:command', { name:'act', act:'sit', pile:0 });
+      await pause(2600);
+      assert.equal((await js('window.sittingProbe')).stance, 'sit');
+      const capture = path.resolve(__dirname,'..','captures','agent-window-sitting.png');
+      fs.mkdirSync(path.dirname(capture),{recursive:true}); fs.writeFileSync(capture,(await win.webContents.capturePage()).toPNG());
+      fixture.minimize(); await pause(1400);
+      assert.notEqual((await js('window.sittingProbe')).stance, 'sit', 'Capri must leave a minimized window');
+      fixture.destroy();
+      console.log('PASS: main-process agent route, fresh registry/world state, native approval cancel/accept, replay rejection, actual overlay sitting and minimized-window departure');
+      console.log('CAPTURE:',capture);
+      clearTimeout(limit); app.exit(0); return;
+    }
+    if (process.argv.includes('--release-only')) {
+      const native = require('../src/main/native-windows');
+      const identity = await js('host.runtimeInfo()');
+      assert.equal(identity.version, require('../package.json').version);
+      assert.equal(identity.currentSource, true);
+      assert.equal(identity.ollamaHost, require('../src/main/ollama').base());
+      const seen = new Set(native.consoleWindows().map(row => row.hwnd));
+      const appeared = [];
+      const sample = () => {
+        for (const row of native.consoleWindows()) {
+          if (!seen.has(row.hwnd)) { seen.add(row.hwnd); appeared.push(row.className); }
+        }
+      };
+      const timer = setInterval(sample, 40);
+      try {
+        win.webContents.send('capri:command', { name: 'chat' });
+        for (let i = 0; i < 100 && !await js("document.querySelector('#panel').classList.contains('is-chat')"); i++) await pause(100);
+        assert.equal(await js("document.querySelector('#panel').classList.contains('is-chat')"), true);
+        assert.match(await js("document.querySelector('.panel__tag').textContent"), /v0\.4\.0/);
+        const submit = text => js(`document.querySelector('.panel__input').value=${JSON.stringify(text)}; document.querySelector('.panel__chat').requestSubmit();`);
+        await submit('whats openned in my pc capri?');
+        let answer;
+        for (let i = 0; i < 100; i++) {
+          await pause(100);
+          answer = await js("({text:document.querySelector('.panel__line').textContent,busy:document.querySelector('.panel__input').disabled})");
+          if (!answer.busy && /^(Open desktop apps|Running app processes|No matching apps)/.test(answer.text)) break;
+        }
+        assert.match(answer.text, /^(Open desktop apps|Running app processes|No matching apps)/);
+        const capture = path.resolve(__dirname, '..', 'captures', 'verified-context.png');
+        fs.mkdirSync(path.dirname(capture), { recursive: true });
+        fs.writeFileSync(capture, (await win.webContents.capturePage()).toPNG());
+        await submit('Say hello in one short sentence.');
+        for (let i = 0; i < 120; i++) {
+          await pause(500);
+          answer = await js("({text:document.querySelector('.panel__line').textContent,busy:document.querySelector('.panel__input').disabled})");
+          if (!answer.busy && answer.text) break;
+        }
+        assert.equal(answer.busy, false);
+        assert.ok(answer.text.length > 0);
+        assert.doesNotMatch(answer.text, /offline|failed|stopped|error/i);
+        await pause(1000); sample();
+        assert.deepEqual(appeared, [], 'A terminal window appeared during the real app reply');
+        console.log(`PASS: release ${identity.version}, exact screenshot question in real chat UI, real local-model reply, zero visible terminal windows`);
+        console.log('CAPTURE:', capture);
+      } finally { clearInterval(timer); }
+      clearTimeout(limit); app.exit(0); return;
+    }
+    if (process.argv.includes('--memory-only')) {
+      const { dialog } = require('electron');
+      let accept = false, confirmations = 0, modelCalls = 0;
+      dialog.showMessageBox = async options => { confirmations++; assert.equal(options.defaultId, 0); return { response: accept ? 1 : 0 }; };
+      const route = text => js(`host.personalRoute(${JSON.stringify(text)})`);
+      const identity = await js('host.runtimeInfo()');
+      assert.equal(identity.contextBackend, 'native-win32');
+      assert.equal(identity.currentSource, true);
+      assert.equal((await js('host.getConfig()')).privacy.allApps, true);
+      const exactQuestion = await route('whats openned in my pc capri?');
+      assert.equal(exactQuestion.handled, true);
+      assert.match(exactQuestion.text, /^(Open desktop apps|Running app processes|No matching apps)/);
+      await js('host.setConfig({privacy:{contextProcesses:false,contextEvents:false}})');
+      assert.match((await route('capri which apps are open rn?')).text, /Running-app context is off/);
+      assert.match((await route('remember I prefer coffee')).text, /off/);
+      await js('host.setConfig({privacy:{memoryEnabled:true,memoryCandidates:true,memoryConfirmChanges:true}})');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(process.env.CAPRIGPT_TEST_PROFILE, 'config.json'), 'utf8')).privacy.memoryEnabled, true);
+      // Verify the native addon also loads inside Electron, with no shell fallback.
+      if (process.platform === 'win32') {
+        const native = require('../src/main/native-windows');
+        const data = native.context({ contextProcesses: true, contextPower: true, processAllowlist: ['electron'] });
+        assert.deepEqual(data.processes, ['electron']);
+        assert.ok(data.power);
+        assert.ok(Array.isArray(native.desktopApps()));
+        assert.ok(Array.isArray(native.geometry(0).wins));
+      }
+      assert.match((await route('I prefer coffee')).text, /not saved/);
+      accept = true;
+      assert.match((await route('remember I prefer coffee')).text, /Saved memory #1/);
+      assert.match((await route('edit memory 1: I prefer tea')).text, /Updated memory #1/);
+      assert.match((await route('recall tea')).text, /I prefer tea/);
+      assert.doesNotMatch((await route('recall coffee')).text, /I prefer coffee/);
+      require('../src/main/ollama').chat = async ({ messages }) => {
+        modelCalls++;
+        assert.match(messages[0].content, /I prefer tea/);
+        assert.doesNotMatch(messages[0].content, /I prefer coffee/);
+        return 'Tea.';
+      };
+      assert.equal((await js('host.chatSend({id:900,messages:[{role:"system",content:"Persona"},{role:"user",content:"Which tea do I prefer?"}]})')).text, 'Tea.');
+      assert.equal(modelCalls, 1);
+      win.webContents.send('capri:command', { name: 'memory' });
+      await pause(500);
+      await js(`document.querySelector('.panel__input').value='/memory list'; document.querySelector('.panel__input').form.requestSubmit();`);
+      await pause(300);
+      assert.match(await js("document.querySelector('.panel__line').textContent"), /I prefer tea/);
+      assert.equal(modelCalls, 1, 'Local command must bypass inference');
+      const capture = path.resolve(__dirname, '..', 'captures', 'personal-memory.png');
+      fs.mkdirSync(path.dirname(capture), { recursive: true });
+      fs.writeFileSync(capture, (await win.webContents.capturePage()).toPNG());
+      assert.match((await route('forget 1')).text, /Forgot/);
+      assert.match((await route('recall tea')).text, /No matching/);
+      assert.equal(confirmations, 4);
+      console.log('PASS: Electron SQLite, confirmation gate, edit/recall/forget, prompt integration, offline UI and native Windows addon; no model inference');
+      console.log('CAPTURE:', capture);
+      clearTimeout(limit); app.exit(0); return;
+    }
     if (process.argv.includes('--layout-only')) {
       const result = await js(`(async () => {
         const { Panel } = await import('./js/panel.js');
@@ -122,7 +744,7 @@ app.whenReady().then(async () => {
     assert.equal(status.ok, true, JSON.stringify(status));
     await js("window.smokeDeltas = ''; host.onChatDelta(({text}) => { window.smokeDeltas += text; }); true");
     const disabled = await js('host.closeApp("test-nonexistent-app", false)');
-    assert.match(disabled.error, /disabled/);
+    assert.match(disabled.error, /unavailable|protected/);
     // Open chat via the activity panel's Talk action, not a separate tray command.
     await pause(2800); // allow the earlier completion message's priority hold to expire
     await hook('UserPromptSubmit', { turn_id: 'chat-live' });
@@ -151,15 +773,11 @@ app.whenReady().then(async () => {
     const capture = path.resolve(__dirname, '..', 'captures', 'local-chat.png');
     fs.mkdirSync(path.dirname(capture), { recursive: true });
     fs.writeFileSync(capture, (await win.webContents.capturePage()).toPNG());
-    // The production menu action exercises real pause/unload/hide behavior.
-    // Capture the menu constructed by rebuildTray on a normal config update.
-    let built;
-    const originalBuild = Menu.buildFromTemplate;
-    Menu.buildFromTemplate = function(template) { built = originalBuild.call(this, template); return built; };
-    await js('host.setConfig({volume: 0.7})');
-    Menu.buildFromTemplate = originalBuild;
-    const gaming = built.items.find((item) => item.label.startsWith('Gaming mode'));
-    assert.ok(gaming);
+    // Exercise the production custom control room, including the gaming action.
+    await js('host.openMenu()'); await pause(300);
+    const controls = BrowserWindow.getAllWindows().find(w => w.webContents.getURL().includes('settings.html'));
+    assert.ok(controls);
+    const gaming = { click: item => controls.webContents.executeJavaScript(`settingsHost.action('gaming', ${item.checked})`) };
     await js(`window.smokePending = host.chatSend({id: 98, messages: [{role:'user', content:'Write a long story.'}]}); true`);
     await pause(250);
     await gaming.click({ checked: true });
@@ -170,7 +788,7 @@ app.whenReady().then(async () => {
     assert.equal((await js('host.startOllama()')).ok, false, 'Gaming mode must block starting Ollama');
     const paused = await js('host.chatSend({id: 99, messages: [{role:"user",content:"hi"}]})');
     assert.match(paused.error, /Gaming mode/);
-    const loaded = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
+    const loaded = await (await fetch(`${require('../src/main/ollama').base()}/api/ps`)).json();
     assert.equal(loaded.models.some((m) => m.name === status.model), false, 'Model still loaded');
     await hook('PermissionRequest', { turn_id: 'paused-turn', tool_name: 'Bash' });
     assert.equal(win.isVisible(), false, 'Notification must not reveal Capri during gaming');
@@ -178,23 +796,7 @@ app.whenReady().then(async () => {
     assert.equal(win.isVisible(), true);
     assert.match(await waitForApproval(), /approval|aprobación/, 'Outstanding approval should be visible after resume');
     await hook('Interrupt', { turn_id: 'paused-turn' });
-    // Preview/cancel the handoff via a fake dialog; no real clipboard is changed.
-    const { dialog, clipboard } = require('electron');
-    const originalDialog = dialog.showMessageBox;
-    let preview;
-    dialog.showMessageBox = async (options) => { preview = options; return { response: 0 }; };
-    assert.equal((await js('host.chatHandoff("Test handoff preview")')).ok, false);
-    assert.equal(preview.detail, 'Test handoff preview');
-    assert.equal(preview.defaultId, 0);
-    const originalWrite = clipboard.write;
-    let copied;
-    clipboard.write = async (items) => { copied = items; };
-    dialog.showMessageBox = async () => ({ response: 1 });
-    assert.equal((await js('host.chatHandoff("Test handoff copy")')).ok, true);
-    assert.equal(await (await copied[0].getType('text/plain')).text(), 'Test handoff copy');
-    clipboard.write = originalWrite;
-    dialog.showMessageBox = originalDialog;
-    console.log('PASS: Codex hook-to-renderer notifications, no approvals, handoff preview, local chat, gaming cancellation/unload/resume');
+    console.log('PASS: Codex hook-to-renderer notifications, no approvals, custom settings, local chat, gaming cancellation/unload/resume');
     console.log('CAPTURE:', capture);
     clearTimeout(limit);
     app.exit(0);

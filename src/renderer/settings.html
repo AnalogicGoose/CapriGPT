@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self' capri:">
+  <title>Capri — Control room</title>
+  <link rel="stylesheet" href="styles/capri.css">
+  <link rel="stylesheet" href="styles/settings.css">
+</head>
+<body class="settings-body">
+  <header class="titlebar"><span class="wordmark">CAPRI<span class="wordmark__suffix">GPT</span></span><span class="titlebar__label">PERSONAL CONTROL ROOM</span><button id="close" aria-label="Close settings">✕</button></header>
+  <div class="shell">
+    <aside class="rail">
+      <div class="identity"><img src="../../assets/capri/capri-face.png" alt="Capri"><div><strong>Your digital ghost.</strong><span><i></i> LOCAL BY DESIGN</span></div></div>
+      <nav aria-label="Settings sections">
+        <button data-page="home" class="selected"><span>01</span>Overview</button>
+        <button data-page="appearance"><span>02</span>Appearance</button>
+        <button data-page="sound"><span>03</span>Sound</button>
+        <button data-page="memory"><span>04</span>Memory</button>
+        <button data-page="awareness"><span>05</span>PC awareness</button>
+        <button data-page="connections"><span>06</span>Connections</button>
+        <button data-page="updates"><span>07</span>Updates & app</button>
+      </nav>
+      <div class="rail__footer"><span id="version">CAPRI</span><button class="quit" data-action="quit">Quit Capri <span>↗</span></button></div>
+    </aside>
+    <main id="content" tabindex="-1"></main>
+  </div>
+  <footer class="statusbar"><span><i></i> Changes save automatically</span><span id="notice" role="status" aria-live="polite">Make yourself at home, choom.</span></footer>
+  <script type="module" src="js/settings.js"></script>
+</body>
+</html>

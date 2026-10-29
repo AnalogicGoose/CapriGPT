@@ -6,7 +6,7 @@
 // ("peek"), and falling ("fall") when the window under her goes away or you drop her.
 
 import { SpriteRenderer, SPRITE } from './sprite.js';
-import { ACTS, NEUTRAL, Player } from './acting.js';
+import { ACTS, NEUTRAL, Player, actionForTool, blendPoses } from './acting.js';
 import { sleep, rand, pick, clamp, lerp, ease, tween, reducedMotion, today } from './util.js';
 
 const ON_TWOS = 1000 / 12;
@@ -47,6 +47,10 @@ export class Capri {
     this.wander = true;
     this.possessWindows = true; // tray: "Possess my windows"
     this.dragging = false;
+    this.gaming = false;
+    this.nextAction = 0;
+    this.nextIdle = performance.now() + rand(12000, 22000);
+    this.lastIdle = null;
 
     this.p = {
       seed: 0, boil: 0.9, hair: 0, head: 0, mane: 0, armL: 0, armR: 0, longL: 1, longR: 1, sit: 0, kickL: 0, kickR: 0,
@@ -169,7 +173,7 @@ export class Capri {
 
   // Is this screen point on her body? Uses the cut-out's alpha so empty space stays click-through.
   hit(x, y) {
-    if (this.hidden || this.p.alpha < 0.5) return false;
+    if (this.hidden || this.fullscreen || this.p.alpha < 0.5) return false;
     const s = this.scale;
     const fy = this.pos.y + this.bob;
     if (this.upside) {
@@ -285,6 +289,7 @@ export class Capri {
   // ---------- frame loop ----------
 
   interval() {
+    if (!reducedMotion.matches && (this.dragging || this.base?.act.smooth || this.act?.player.act.smooth || this.motionBlend)) return 1000 / 60;
     if (this.busy || this.stance === 'fall' || this.act?.player.act.fps === 24) return ON_ONES;
     return this.mode === 'sleep' ? ASLEEP : ON_TWOS;
   }
@@ -292,6 +297,8 @@ export class Capri {
   loop(now) {
     requestAnimationFrame(this.loop);
     if (this.hidden) return;
+    if (this.fullscreen) return;
+    if (this.gaming && !this.busy && !this.act) return;
     if (now - this.lastDraw < this.interval() - 1) return;
     this.drawFrame(now);
     this.behave(now);
@@ -300,14 +307,24 @@ export class Capri {
   drawFrame(now = performance.now()) {
     this.lastDraw = now;
     this.animate(now);
-    this.sprite.draw(this.p);
+    const progress = this.fullscreenProgress || 0;
+    this.sprite.draw(progress ? { ...this.p,
+      alpha: this.p.alpha * (1 - progress),
+      collapse: reducedMotion.matches ? this.p.collapse : this.p.collapse + (1 - this.p.collapse) * progress,
+      dissolve: reducedMotion.matches ? this.p.dissolve : Math.max(this.p.dissolve, progress * 0.5),
+      glitch: reducedMotion.matches ? this.p.glitch : Math.max(this.p.glitch, progress * (1 - progress)),
+      split: reducedMotion.matches ? this.p.split : Math.max(this.p.split, progress * (1 - progress) * 10),
+    } : this.p);
     this.place();
   }
 
   // Pick the drawing: the stance's cycle underneath, the current act on top.
   animate(now) {
     const p = this.p;
-    p.seed = Math.random() * 100; // a fresh drawing, so the line boils
+    if (!this.lastInk || now - this.lastInk >= ON_TWOS) {
+      p.seed = Math.random() * 100; // Keep the ink cadence while limbs move smoothly.
+      this.lastInk = now;
+    }
 
     const under = this.base.sample(now);
     const base = under ? this.base.resolve(under.pose, this.facing) : {};
@@ -329,7 +346,14 @@ export class Capri {
         this.endAct(true);
       }
     }
-    const pose = { ...NEUTRAL, ...base, ...act };
+    let pose = { ...NEUTRAL, ...base, ...act };
+    if (this.dragging && reducedMotion.matches) pose = { ...NEUTRAL, armL: 0.4, armR: 0.4, kickL: 0.08, kickR: 0.08 };
+    if (reducedMotion.matches) this.motionBlend = null;
+    if (this.motionBlend) {
+      const t = clamp((now - this.motionBlend.start) / this.motionBlend.ms, 0, 1);
+      pose = blendPoses(this.motionBlend.pose, pose, t * t * (3 - 2 * t));
+      if (t === 1) this.motionBlend = null;
+    }
     if (this.mode === 'sleep' && this.stance === 'sit' && !act) {
       Object.assign(pose, { head: 0.12, mane: -0.1, kickL: 0.03, kickR: 0.03, armL: -0.45, armR: -0.45 }); // dozing on the ledge
     }
@@ -356,11 +380,21 @@ export class Capri {
   }
 
   behave(now) {
+    if (this.fullscreen) return;
+    if (this.gaming) return;
     if (this.stance === 'fall') {
       this.updateFall(now);
       return;
     }
-    if (this.busy || this.dragging) return;
+    if (this.busy || this.dragging || this.gaming || this.chatThinking) return;
+
+    if (now > this.nextIdle && this.mode === 'idle' && !this.act && !this.pointing
+        && !reducedMotion.matches && ['stand', 'sit'].includes(this.stance)) {
+      this.nextIdle = now + rand(16000, 30000);
+      const name = pick(['idleSway', 'idlePreen', 'idleStretch'].filter((name) => name !== this.lastIdle));
+      this.lastIdle = name;
+      this.perform(name);
+    }
 
     if (now > this.nextTwitch) {
       this.nextTwitch = now + rand(5000, 13000);
@@ -430,10 +464,33 @@ export class Capri {
 
   // ---------- acting ----------
 
+  // Quiet action beats never interrupt travel, pointing, alerts or an existing reaction.
+  reactToAction(name) {
+    const now = performance.now();
+    if (this.fullscreen || this.gaming || this.busy || this.hidden || this.dragging || this.pointing || (this.act && this.act.player.priority >= 1)
+        || this.mode === 'alert' || this.mode === 'sleep' || reducedMotion.matches
+        || !['stand', 'sit'].includes(this.stance) || now < this.nextAction) return;
+    this.nextAction = now + 4500;
+    this.perform(name, this.towardCenter());
+  }
+
+  reactToTool(tool) {
+    this.reactToAction(actionForTool(tool));
+  }
+
+  setChatThinking(on) {
+    if (Boolean(this.chatThinking) === on) return;
+    this.chatThinking = on;
+    if (this.stance === 'stand') this.base = this.restBase();
+    if (on) this.reactToAction('think');
+  }
+
   // Play an act from acting.js. Resolves when it's over (or cut off by a stronger one).
   perform(name, dir = 0, { reach = 1 } = {}) {
     if (this.stowed || this.dormant) return Promise.resolve(); // nobody to act: she's in her biochip, or just her mask
+    if (this.fullscreen || this.dragging || this.stance === 'fall') return Promise.resolve();
     const act = ACTS[name];
+    if (!act || (this.gaming && name !== 'gameReady')) return Promise.resolve();
     if (reducedMotion.matches && act.fps === 24) {
       if (act.flip) this.facing *= -1;
       return Promise.resolve();
@@ -471,10 +528,11 @@ export class Capri {
   }
 
   baseAct() {
+    if (this.dragging) return 'drag';
     if (this.stance === 'sit') return 'sit';
     if (this.stance === 'peek') return 'peek';
     if (this.stance === 'fall') return 'fall';
-    return this.mode === 'sleep' ? 'sleep' : this.mode === 'work' ? 'focus' : 'stand';
+    return this.mode === 'sleep' ? 'sleep' : this.mode === 'work' || this.chatThinking ? 'focus' : 'stand';
   }
 
   setMode(mode) {
@@ -487,6 +545,11 @@ export class Capri {
     const prev = this.mode;
     this.mode = mode;
     if (mode === 'sleep') this.sleptAt = now;
+    if (mode === 'alert' && !this.busy && !this.dragging && !this.pointing
+        && (!this.act || this.act.player.priority <= 1)) {
+      this.endAct(false);
+      this.perform('listen', this.towardCenter());
+    }
     this.onMode?.(mode, prev);
     if (this.stance === 'stand') this.base = this.restBase();
     const p = this.p;
@@ -919,6 +982,57 @@ export class Capri {
 
   // ---------- moving around ----------
 
+  async gamingDeparture() {
+    this.gaming = true;
+    if (this.fullscreen) return; // Already away; do not queue a tween in a hidden window.
+    // Let a short move finish; never overlap two sets of teleport tweens.
+    for (let i = 0; this.busy && i < 6; i++) await sleep(100);
+    if (this.busy || this.dragging || this.hidden || this.stowed || this.dormant) return;
+    this.busy = true;
+    this.endAct(false);
+    this.pending = null;
+    try {
+      await this.vanish();
+      if (!this.gaming) {
+        Object.assign(this.p, { alpha: 1, collapse: 0, dissolve: 0, glitch: 0, split: 0 });
+        return;
+      }
+      this.drawFrame();
+      if (!reducedMotion.matches) await sleep(140); // Let the departing light read before hiding the overlay.
+      this.root.dataset.gamingTeleport = 'away';
+    } finally { this.busy = false; }
+  }
+
+  prepareGamingReturn() {
+    if (this.fullscreen) {
+      if (!this.hidden && !this.stowed && !this.dormant) {
+        Object.assign(this.p, { alpha: 1, collapse: 0, dissolve: 0, glitch: 0, split: 0 });
+      }
+      return;
+    }
+    if (this.busy || this.hidden || this.stowed || this.dormant) return;
+    this.busy = true;
+    this.endAct(false);
+    this.gamingReturn = true;
+    // Draw the invisible starting pose before the main process shows the overlay.
+    Object.assign(this.p, { alpha: 0, collapse: 1, dissolve: 0.5, glitch: 0, split: 0 });
+    this.drawFrame();
+    this.root.dataset.gamingTeleport = 'returning';
+  }
+
+  async gamingArrival() {
+    if (!this.gamingReturn) return;
+    try {
+      // A window she perched on may have closed while gaming; use her safe corner.
+      await this.arrive(this.spot('post'));
+      this.nextMove = performance.now() + rand(25000, 60000);
+      this.root.dataset.gamingTeleport = 'returned';
+    } finally {
+      this.gamingReturn = false;
+      this.busy = false;
+    }
+  }
+
   // Collapse into a line of light and go. Leaves her invisible; the caller puts her somewhere.
   async vanish({ beam = true } = {}) {
     const p = this.p;
@@ -1026,6 +1140,12 @@ export class Capri {
   // a streak runs from her to the chip). Asleep down to her mask, it's the mask that goes.
   async stow() {
     if (this.stowed || this.stowing) return;
+    if (this.fullscreen) {
+      this.endAct(false);
+      this.pending = null;
+      this.stowNow();
+      return;
+    }
     this.stowing = true;
     for (let i = 0; this.busy && i < 30; i++) await sleep(100); // let a move finish
     this.busy = true;
@@ -1124,6 +1244,14 @@ export class Capri {
   async unstow() {
     this.unstowAfter = this.stowing;
     if (!this.stowed) return;
+    if (this.fullscreen) {
+      this.stowed = false;
+      this.hidden = false;
+      this.root.hidden = false;
+      Object.assign(this.p, { alpha: 1, collapse: 0, dissolve: 0, glitch: 0, split: 0 });
+      this.onUnstow?.();
+      return;
+    }
     this.stowed = false;
     this.busy = true;
     this.onUnstow?.();
@@ -1314,7 +1442,8 @@ export class Capri {
 
   fall() {
     if (this.stance === 'fall') return;
-    if (this.sky) this.endAct(false);
+    this.blendMotion();
+    this.endAct(false);
     this.landingSpot = this.landing();
     this.setStance('fall');
     this.vy = 0;
@@ -1333,19 +1462,17 @@ export class Capri {
       return;
     }
     this.pos.y = target.y;
+    this.blendMotion(100);
     this.setStance(target.stance, { perch: target.perch });
     const s = this.scale;
     if (target.stance === 'sit') {
-      this.perform('plop');
+      this.perform('dropPlop');
     } else {
-      this.perform('land');
+      this.perform('dropLand');
       this.fx.burst(this.pos.x, this.pos.y - 20 * s, { count: 12, power: 0.6, spread: 60 * s });
     }
     this.voice.play('land');
-    const p = this.p;
-    p.glitchSeed = Math.random() * 100;
-    p.glitch = 0.3;
-    setTimeout(() => { p.glitch = 0; }, ON_ONES * 3);
+    // The landing reads through her weight and follow-through, without a glitch flash.
   }
 
   // First appearance: drop in from the top of the screen.
@@ -1510,19 +1637,28 @@ export class Capri {
 
   // ---------- pointer ----------
 
+  blendMotion(ms = 150) {
+    this.motionBlend = reducedMotion.matches ? null : {
+      pose: { ...NEUTRAL, ...this.p, bob: this.bob, tilt: this.tilt, sx: this.sx, sy: this.sy },
+      start: performance.now(), ms,
+    };
+  }
+
   bindPointer() {
     let down = null;
     this.canvas.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (this.hit(e.clientX, e.clientY)) this.onMenu?.(); // right-click: her menu
     });
-    this.canvas.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || this.busy || !this.hit(e.clientX, e.clientY)) return;
-      down = { x: e.clientX, y: e.clientY, pos: { ...this.pos } };
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || this.busy || this.gaming || this.fullscreen || !this.hit(e.clientX, e.clientY)) return;
+      down = { x: e.clientX, y: e.clientY, pos: { ...this.pos }, pointerId: e.pointerId };
+      this.canvas.setPointerCapture(e.pointerId);
     });
-    window.addEventListener('mousemove', (e) => {
+    window.addEventListener('pointermove', (e) => {
       this.mouse = { x: e.clientX, y: e.clientY }; // a window she's in watches it
       if (down) {
+        if (e.pointerId !== down.pointerId) return;
         const dx = e.clientX - down.x, dy = e.clientY - down.y;
         if (!this.dragging && Math.hypot(dx, dy) > 5 && !this.busy) {
           this.dragging = true;
@@ -1530,10 +1666,13 @@ export class Capri {
             // flip back upright under the pointer
             down.pos = { x: down.pos.x, y: down.y + (SPRITE.feet.y - SPRITE.head.y) * this.scale };
           }
+          this.wake();
+          this.stopPointing();
+          this.blendMotion();
           this.endAct(false);
           this.setStance('stand');
-          this.p.glitch = 0.18;
-          this.p.split = 2;
+          this.p.glitch = 0;
+          this.p.split = 0;
           this.onTeleport?.('start');
         }
         if (this.dragging) {
@@ -1541,30 +1680,39 @@ export class Capri {
             x: clamp(down.pos.x + dx, 40, this.view.w - 40),
             y: clamp(down.pos.y + dy, SPRITE.height * this.scale * 0.5, this.floor),
           };
-          this.p.glitchSeed = Math.random() * 100;
           this.place();
         }
         return;
       }
       this.notice(e.clientX, e.clientY);
     });
-    window.addEventListener('mouseup', () => {
+    const release = (e, cancelled = false) => {
       if (!down) return;
+      if (e?.pointerId !== undefined && e.pointerId !== down.pointerId) return;
+      if (!cancelled && e?.button !== undefined && e.button !== 0) return;
+      const pointerId = down.pointerId;
       const wasDragging = this.dragging;
       down = null;
       this.dragging = false;
+      if (this.canvas.hasPointerCapture(pointerId)) this.canvas.releasePointerCapture(pointerId);
       if (wasDragging) {
-        tween(this.p, { glitch: 0, split: 0 }, 200, ease.out);
         this.onTeleport?.('end');
         this.drop();
-      } else {
+      } else if (!cancelled) {
         this.onClick?.();
       }
-    });
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', e => release(e, true));
+    this.canvas.addEventListener('lostpointercapture', e => release(e, true));
+    window.addEventListener('blur', () => release(null, true));
+    this.cancelDrag = () => release(null, true);
   }
 
   // Let go of her: onto a ledge if her hips are right at one, otherwise she falls.
   drop() {
+    this.blendMotion();
+    this.endAct(false);
     const s = this.scale;
     const hip = this.pos.y - (SPRITE.feet.y - SPRITE.hip) * s;
     for (const win of this.windows.wins) {
@@ -1573,17 +1721,21 @@ export class Capri {
       const dx = this.pos.x - win.x;
       this.pos = this.seat(win, dx);
       this.setStance('sit', { perch: { id: win.id, dx } });
-      this.perform('plop');
+      this.perform('dropPlop');
       this.voice.play('land');
       return;
     }
     if (this.pos.y < this.floor - 2) this.fall();
-    else this.perform('land');
+    else {
+      this.setStance('stand');
+      this.perform('dropLand');
+    }
   }
 
   // When the pointer comes close she turns around to face it and cocks her head;
   // if she's peeking, she's shy and ducks away.
   notice(x, y) {
+    if (this.fullscreen) return;
     if (this.busy || this.hidden || this.stance === 'fall' || this.sky) return; // the satellite has all her attention
     const h = this.head();
     if (Math.hypot(x - h.x, y - h.y) > 230) return;

@@ -1,0 +1,67 @@
+'use strict';
+const {WhisperEngine}=require('./whisper-engine');
+const {SpeechSegmenter}=require('./speech-segmenter');
+class SpeechInput {
+  constructor({allowed,notify,engine,runtimeDir}){
+    Object.assign(this,{allowed,notify});this.engine=engine||new WhisperEngine({runtimeDir});this.current=null;
+  }
+  start(request={}){
+    if(!request||typeof request.id!=='string'||!/^[a-zA-Z0-9-]{8,80}$/.test(request.id))return {ok:false,error:'invalid-request'};
+    if(!this.allowed())return {ok:false,error:'speech-paused'};
+    if(this.current)return {ok:false,error:'speech-busy'};
+    const slot={id:request.id,phase:'starting',queue:[],running:false,total:0,abort:new AbortController()};
+    this.current=slot;slot.segmenter=new SpeechSegmenter(pcm=>this.enqueue(slot,pcm));
+    this.engine.start(progress=>this.emit(slot,{type:'setup',percent:progress.percent})).then(()=>{
+      if(this.current!==slot)return;
+      if(!this.allowed()){this.cancel();return;}
+      slot.phase='listening';slot.timeout=setTimeout(()=>this.cancel(),95000);
+      this.emit(slot,{type:'ready',language:'auto',engine:'Whisper large-v3-turbo',device:this.engine.device});
+    }).catch(error=>{
+      if(this.current!==slot)return;
+      this.emit(slot,{type:'error',text:error.message==='speech-download-failed'?'speech-download-failed':'speech-unavailable'});this.cancel();
+    });
+    return {ok:true,id:slot.id};
+  }
+  emit(slot,event){if(this.current===slot)this.notify({id:slot.id,...event});}
+  audio({id,samples}={}){
+    const slot=this.current;
+    if(!slot||slot.id!==id||slot.phase!=='listening')return;
+    if(!this.allowed()){this.cancel();return;}
+    if(!(samples instanceof ArrayBuffer)&&!ArrayBuffer.isView(samples))return;
+    const pcm=Buffer.from(samples.buffer||samples,samples.byteOffset||0,samples.byteLength);
+    if(!pcm.length||pcm.length>32000||pcm.length%2)return;
+    slot.total+=pcm.length/2;if(slot.total>90*16000){this.stop(id);return;}
+    const rms=slot.segmenter.add(Buffer.from(pcm));this.emit(slot,{type:'level',level:Math.min(100,Math.round(rms*500))});
+  }
+  enqueue(slot,pcm){
+    if(this.current!==slot)return;
+    if(slot.queue.length>=3){this.emit(slot,{type:'error',text:'speech-too-fast'});this.cancel();return;}
+    slot.queue.push(pcm);this.drain(slot);
+  }
+  async drain(slot){
+    if(slot.running)return;slot.running=true;
+    try{
+      while(this.current===slot&&slot.queue.length){
+        const pcm=slot.queue.shift();this.emit(slot,{type:'processing'});
+        const text=await this.engine.transcribe(pcm,slot.abort.signal);
+        if(this.current!==slot)return;
+        if(!this.allowed()){this.cancel();return;}
+        if(text)this.emit(slot,{type:'final',text:text.slice(0,500)});
+      }
+    }catch{if(this.current===slot){this.emit(slot,{type:'error',text:'recognizer-failed'});this.cancel();}}
+    finally{slot.running=false;if(this.current===slot&&slot.phase==='stopping'&&!slot.queue.length)this.finish(slot);}
+  }
+  stop(id){
+    const slot=this.current;if(!slot||slot.id!==id)return {ok:true};
+    if(slot.phase==='starting'){this.cancel();return {ok:true};}
+    if(slot.phase==='stopping')return {ok:true};
+    slot.phase='stopping';clearTimeout(slot.timeout);slot.segmenter.flush();this.emit(slot,{type:'stopping'});
+    if(!slot.running&&!slot.queue.length)this.finish(slot);return {ok:true};
+  }
+  finish(slot){
+    if(this.current!==slot)return;
+    clearTimeout(slot.timeout);this.current=null;slot.queue=[];slot.segmenter.reset();this.engine.stop();this.notify({id:slot.id,type:'stopped'});
+  }
+  cancel(){const slot=this.current;if(!slot){this.engine.stop();return;}slot.abort.abort();this.finish(slot);}
+}
+module.exports={SpeechInput};

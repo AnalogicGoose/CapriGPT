@@ -1,4 +1,15 @@
+> **Conversation update:** Capri keeps her warm, mischievous personality with less recurring lore, fuller practical answers, and a larger local conversation window. See [PERSONALITY-AND-CONTINUITY.md](PERSONALITY-AND-CONTINUITY.md) for the changes, research, limits and checks. Restart Capri to load this update.
+>
+> **Desktop tasks:** Ask Capri to open apps, play a creator’s newest YouTube upload, find current AI news or check Steam discounts. Requests run through local Qwen and real tools, with progress and source buttons. [DESKTOP-TASKS.md](DESKTOP-TASKS.md) explains the supported actions and checks.
+
+> **New control room:** Right-click Capri or her tray icon for the custom settings window. Appearance, sound, memory, PC awareness, connections and updates now have their own sections. See [CONTROL-ROOM.md](CONTROL-ROOM.md). Qwen 3.5 9B is the default local brain.
+
 > **CapriGPT local prototype:** Start with [START-HERE.md](START-HERE.md) for Windows setup, safety, gaming mode, and licensing. [ROADMAP.md](ROADMAP.md) covers planned OpenAI/Codex integrations. The upstream README below describes the original Capri application.
+
+> **Personal memory and PC context:** Right-click Capri → **Memory & PC privacy**
+> for confirmed local memories, search/edit/forget, retention/export/delete and
+> optional on-demand PC snapshots. [MEMORY-AND-CONTEXT.md](MEMORY-AND-CONTEXT.md)
+> documents setup, privacy limits and tests. This branch requires Node.js 22.13+.
 
 **English** · [Français](README.fr.md)
 
@@ -365,3 +376,18 @@ the show, a fan-made cut-out and fan art (her intro's close-ups); they are **not
 If a rights holder wants them removed, open an issue.
 
 Fonts: Chakra Petch and JetBrains Mono, under the SIL Open Font License, via Fontsource.
+## Local agent upgrade
+
+The first agent slice adds a live capability registry, native Windows world state,
+bounded Qwen 3.5 9B decisions, confirmed action proposals and a local SQLite
+status journal. See [AGENT-FIRST-SLICE.md](AGENT-FIRST-SLICE.md) for commands,
+privacy behavior, validation and the speech/accessibility roadmap.
+
+## Microphone dictation
+
+The microphone button beside Send uses the PC's default input and local Whisper
+large-v3-turbo with speech detection to put recognized phrases into the draft.
+English and Spanish are detected automatically; no Windows speech packs or API
+key are needed. Click again to stop, review the text, then Send. Nothing submits
+automatically. See [SPEECH-TO-TEXT.md](SPEECH-TO-TEXT.md) for setup and testing, and
+[VOICE-RESEARCH.md](VOICE-RESEARCH.md) for the researched choice of speech engine.

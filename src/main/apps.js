@@ -4,41 +4,19 @@
 // a window, by name; closing one the way its own close button does (it can still ask you to save),
 // and only if you ask again, forcing it. Windows only.
 
-const { execFile } = require('node:child_process');
+const native = require('./native-windows');
 
-// never these: the desktop itself, Windows' own pieces, her (Capri), Claude (she watches it) and
+// never these: the desktop itself, Windows' own pieces, her (Capri), Codex and
 // Ollama (she talks through it)
 const KEEP = new Set([
   'explorer', 'applicationframehost', 'textinputhost', 'shellexperiencehost', 'startmenuexperiencehost',
-  'searchhost', 'searchapp', 'lockapp', 'dwm', 'capri', 'caprigpt', 'codex', 'chatgpt', 'electron', 'claude', 'ollama', 'ollama app',
+  'searchhost', 'searchapp', 'lockapp', 'dwm', 'capri', 'caprigpt', 'codex', 'chatgpt', 'electron', 'ollama', 'ollama app',
 ]);
-
-function powershell(script) {
-  return new Promise((resolve, reject) => {
-    execFile('powershell.exe', [
-      '-NoProfile', '-NonInteractive', '-Command',
-      `[Console]::OutputEncoding = [Text.Encoding]::UTF8; ${script}`,
-    ], { windowsHide: true, timeout: 15000 }, (err, out) => (err ? reject(err) : resolve(out.trim())));
-  });
-}
 
 // [{ name, process, ids }]: one per program with a window open ("AM Music", "Discord"...)
 async function list() {
   if (process.platform !== 'win32') return [];
-  const out = await powershell(
-    'Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle } | '
-    + 'ForEach-Object { [pscustomobject]@{ id = $_.Id; name = $_.ProcessName; label = $_.Description } } | '
-    + 'ConvertTo-Json -Compress',
-  );
-  const rows = [].concat(out ? JSON.parse(out) : []);
-  const apps = new Map();
-  for (const { id, name, label } of rows) {
-    if (id === process.pid || KEEP.has(name.toLowerCase())) continue;
-    const app = apps.get(name) || { name, process: name, label: label || '', ids: [] };
-    app.ids.push(id);
-    apps.set(name, app);
-  }
-  return [...apps.values()];
+  return native.desktopApps().filter(app => !KEEP.has(app.name.toLowerCase()));
 }
 
 const simple = (text) => String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
@@ -64,14 +42,10 @@ async function find(wanted) {
 async function close(name, { force = false } = {}) {
   const app = (await list()).find((a) => a.process === name);
   if (!app) return { running: false };
-  const ids = app.ids.join(',');
-  const out = await powershell(force
-    ? `Stop-Process -Id ${ids} -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 600; `
-      + `@(Get-Process -Id ${ids} -ErrorAction SilentlyContinue).Count`
-    : `foreach ($p in @(Get-Process -Id ${ids} -ErrorAction SilentlyContinue)) { [void]$p.CloseMainWindow() }; `
-      + 'Start-Sleep -Milliseconds 2500; '
-      + `@(Get-Process -Name '${name.replace(/'/g, "''")}' -ErrorAction SilentlyContinue).Count`);
-  return { running: Number(out) > 0 };
+  if (force) native.forceClose(app.ids, app.name);
+  else native.requestClose(app.handles);
+  await new Promise(resolve => setTimeout(resolve, force ? 600 : 2500));
+  return { running: native.processRows().some(row => row.name === app.name) };
 }
 
 module.exports = { list, find, close };

@@ -18,12 +18,31 @@
 
 export const SHEET_FPS = 12;
 
+// Only tool names received from actual lifecycle events select an action.
+export function actionForTool(tool = '') {
+  if (/search|grep|glob|find|fetch|browse/i.test(tool)) return 'search';
+  if (/write|edit|patch|notebook/i.test(tool)) return 'type';
+  if (/read|view|inspect|list/i.test(tool)) return 'read';
+  return 'think';
+}
+
 const rep = (n, keys) => Array.from({ length: n }, () => keys).flat();
 
 export const NEUTRAL = {
   head: 0, mane: 0, hair: 0, tilt: 0, bob: 0, sx: 1, sy: 1, armL: 0, armR: 0, longL: 1, longR: 1,
   smear: [0, 0], echo: [0, 0], kickL: 0, kickR: 0,
 };
+
+// Continuous motion for mouse handling, while the other exposure sheets stay held.
+export function blendPoses(from, to, amount) {
+  const expand = pose => ({ ...NEUTRAL, ...pose,
+    ...(pose.arms === undefined ? {} : { armL: pose.arms, armR: pose.arms }) });
+  const a = expand(from), b = expand(to);
+  const t = Math.max(0, Math.min(1, amount));
+  return Object.fromEntries(Object.keys(NEUTRAL).map(key => [key, Array.isArray(a[key])
+    ? a[key].map((value, i) => value + (b[key][i] - value) * t)
+    : a[key] + (b[key] - a[key]) * t]));
+}
 
 export const ACTS = {
   // ---- stances (looping) ----
@@ -92,6 +111,61 @@ export const ACTS = {
   },
 
   // ---- one-shot acts ----
+
+  // Quiet idle drawings: no effects, no new artwork, and a rest drawing at both ends.
+  idleSway: {
+    priority: 0,
+    keys: [[3, {}], [8, { head: -0.06, hair: -3, tilt: -1, armL: -0.08 }],
+      [3, { hair: 0 }], [8, { head: 0.06, hair: 3, tilt: 1, armR: -0.08 }], [4, {}]],
+  },
+  idlePreen: {
+    priority: 0,
+    keys: [[3, {}], [2, { head: -0.04, armL: 0.25 }],
+      [7, { head: -0.1, armL: 0.72, mane: 0.08 }],
+      [4, { head: -0.08, armL: 0.64, hair: 2 }], [3, { armL: 0.2 }], [4, {}]],
+  },
+  idleStretch: {
+    priority: 0,
+    keys: [[3, {}], [3, { head: 0.04, arms: -0.14, mane: -0.05 }],
+      [4, { arms: 0.25, head: -0.04 }], [9, { arms: 0.5, head: -0.08, mane: 0.1 }],
+      [3, { arms: 0.2 }], [4, {}]],
+  },
+  listen: {
+    priority: 1, directional: true,
+    keys: [[2, {}], [2, { head: -0.03 }], [9, { head: 0.14, mane: 0.06 }],
+      [5, { head: 0.1 }], [3, {}]],
+  },
+  think: {
+    priority: 1,
+    keys: [[3, {}], [3, { head: -0.06, armL: 0.28 }],
+      [10, { head: -0.12, armL: 0.65, mane: 0.05 }],
+      [5, { head: -0.08, armL: 0.58 }], [3, { armL: 0.2 }], [3, {}]],
+  },
+  read: {
+    priority: 1,
+    keys: [[2, {}], [6, { head: 0.08, armL: 0.12, armR: 0.12 }],
+      [6, { head: -0.02, armL: 0.12, armR: 0.12 }],
+      [5, { head: 0.06, arms: 0.1 }], [3, {}]],
+  },
+  search: {
+    priority: 1,
+    keys: [[2, {}], [7, { head: -0.14, hair: -2 }], [2, { head: -0.04 }],
+      [7, { head: 0.14, hair: 2 }], [3, {}]],
+  },
+  type: {
+    priority: 1,
+    keys: [[2, {}], [3, { head: 0.07, arms: 0.18 }],
+      ...rep(3, [[2, { head: 0.08, armL: 0.28, armR: 0.14 }],
+        [2, { head: 0.06, armL: 0.14, armR: 0.28 }]]), [3, { arms: 0.1 }], [3, {}]],
+  },
+  // A quick double-handed ready pose, then tuck in before gaming mode hides the overlay.
+  gameReady: {
+    priority: 3, fps: 24,
+    keys: [[2, { head: -0.05, arms: -0.1, mane: -0.08 }],
+      [2, { head: 0.06, arms: 0.3, mane: 0.12 }],
+      [7, { head: 0.1, armL: 0.44, armR: 0.4, mane: 0.16 }],
+      [2, { head: 0.03, arms: 0.2 }], [3, { arms: -0.3, mane: -0.12 }]],
+  },
 
   // little nods while the words come out, two drawings on threes
   talk: { priority: 0, keys: rep(2, [[3, { head: 0.04, mane: 0.08 }], [3, { head: 0, mane: 0.03 }]]) },
@@ -432,13 +506,41 @@ export const ACTS = {
     ],
   },
 
-  // while falling: stretched, mane blown up, arms flailing every other drawing
+  // Held by the pointer: alternating windmill arms and bicycle kicks, with delayed hair.
+  drag: {
+    loop: true, smooth: true, fps: 24,
+    keys: [
+      [4, { armL: 1.05, armR: 0.25, kickL: 0.55, kickR: -0.1, head: -0.1, hair: -3, mane: 0.12 }],
+      [3, { armL: 0.65, armR: 0.65, kickL: 0.2, kickR: 0.2, head: 0, hair: -1, mane: 0.2 }],
+      [4, { armL: 0.25, armR: 1.05, kickL: -0.1, kickR: 0.55, head: 0.1, hair: 3, mane: 0.12 }],
+      [3, { armL: 0.65, armR: 0.65, kickL: 0.2, kickR: 0.2, head: 0, hair: 1, mane: 0.2 }],
+    ],
+  },
+
+  // On release she reaches upward and kicks, smoothly alternating through the descent.
   fall: {
     loop: true,
+    smooth: true,
     fps: 24,
     keys: [
-      [2, { sy: 1.12, sx: 0.92, mane: 0.36, head: 0.05, smear: [0, -16], armL: 0.8, armR: 0.55 }],
-      [2, { sy: 1.1, sx: 0.93, mane: 0.26, head: -0.04, smear: [0, -12], armL: 0.55, armR: 0.82 }],
+      [4, { sy: 1.04, sx: 0.98, mane: 0.26, head: 0.06, hair: -3, armL: 1.1, armR: 0.7, kickL: 0.4, kickR: -0.06 }],
+      [4, { sy: 1.03, sx: 0.99, mane: 0.2, head: -0.06, hair: 3, armL: 0.7, armR: 1.1, kickL: -0.06, kickR: 0.4 }],
+    ],
+  },
+  dropLand: {
+    priority: 3, smooth: true, fps: 24,
+    keys: [
+      [3, { sy: 0.85, sx: 1.1, bob: 3, mane: -0.12, arms: -0.2 }],
+      [4, { sy: 1.03, sx: 0.98, bob: -1, mane: 0.08, arms: 0.12 }],
+      [4, {}],
+    ],
+  },
+  dropPlop: {
+    priority: 3, smooth: true, fps: 24,
+    keys: [
+      [3, { sy: 0.92, sx: 1.04, mane: -0.08, kickL: 0.24, kickR: 0.24, arms: -0.5 }],
+      [4, { sy: 1.02, sx: 0.99, kickL: 0.1, kickR: 0.1, arms: -0.4 }],
+      [4, { kickL: 0.08, kickR: 0.08, arms: -0.42 }],
     ],
   },
 };
@@ -460,7 +562,8 @@ export class Player {
   // The drawing on screen at `now` ({ pose, index, cue }), or null once a one-shot act is over.
   sample(now) {
     const fps = this.act.fps || SHEET_FPS;
-    let f = Math.floor((now - this.start) / (1000 / fps));
+    let f = Math.max(0, (now - this.start) / (1000 / fps));
+    if (!this.act.smooth) f = Math.floor(f);
     if (f >= this.total) {
       if (!this.act.loop) return null;
       f %= this.total;
@@ -468,7 +571,12 @@ export class Player {
     const { keys } = this.act;
     for (let i = 0; i < keys.length; i++) {
       const [hold, pose, cue] = keys[i];
-      if (f < hold) return { pose, index: i, cue };
+      if (f < hold) {
+        if (!this.act.smooth) return { pose, index: i, cue };
+        const next = keys[i + 1] || (this.act.loop ? keys[0] : keys[i]);
+        const t = f / hold;
+        return { pose: blendPoses(pose, next[1], t * t * (3 - 2 * t)), index: i, cue };
+      }
       f -= hold;
     }
     return null;

@@ -98,3 +98,22 @@ test('installed offline Ollama offers explicit start and reopens chat with activ
   assert.equal(chat.open, true);
   assert.equal(message.activity, 'Codex is working.');
 });
+
+test('ordinary chat does not launch app discovery; only a requested close does', async () => {
+  const source = fs.readFileSync(path.join(__dirname, '../src/renderer/js/chat.js'), 'utf8')
+    .replace("import { pick, fmt } from './util.js';", 'const pick = items => items[0]; const fmt = text => text;');
+  const { Chat } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  let discoveries = 0;
+  const chat = new Chat({
+    panel: { setChatBusy() {}, setActions() {}, chatTurn() {}, stream() {}, setFace() {} },
+    capri: { pulse() {} }, voice: {}, brain: { t: { chat: {} } },
+    host: { onChatDelta() {}, personalRoute: async () => ({ handled: false }),
+      chatSend: async () => ({ ok: true, text: 'Hello.' }), openApps: async () => { discoveries++; return []; } },
+  });
+  chat.open = true;
+  chat.persona = () => 'Persona';
+  await chat.send('Hello Capri');
+  assert.equal(discoveries, 0);
+  await chat.send('close Spotify please');
+  assert.equal(discoveries, 1);
+});

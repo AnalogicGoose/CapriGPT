@@ -153,7 +153,7 @@ export class Brain {
       // once in a long think she looks up at the satellite; otherwise a little something
       const gazed = !th.gazed && quiet > 25000 && this.capri.gaze({ big: false });
       if (gazed) th.gazed = true;
-      else this.capri.flourish();
+      else this.capri.reactToAction('think');
     }
     if (th.said < 1 && quiet >= THINK_SAY) {
       th.said = 1;
@@ -179,6 +179,7 @@ export class Brain {
     }
     if (this.capri.mode !== 'alert') this.capri.setMode('work');
     this.capri.pulse();
+    this.capri.reactToTool?.(evt.tool_name);
     if (HACKING_TOOLS.has(evt.tool_name)) this.capri.spark(); // red sparks: she's in the system
     this.panel.setTicker(action);
     if (this.panel.current?.kind === 'work') this.panel.updateLog(s.log);

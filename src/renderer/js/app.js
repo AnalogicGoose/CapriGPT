@@ -4,12 +4,13 @@ import { Chip, Mask } from './chip.js';
 import { Panel } from './panel.js';
 import { Voice } from './voice.js';
 import { Brain } from './brain.js';
-import { Guide } from './guide.js';
 import { Mission } from './mission.js';
 import { Chat } from './chat.js';
 import { IntegrationCompanion } from './integration.js';
+import { FullscreenPresence } from './fullscreen-presence.js';
+import { Dictation } from './dictation.js';
 import { LINES } from './lines.js';
-import { pick, fmt } from './util.js';
+import { pick } from './util.js';
 
 const host = window.host;
 
@@ -68,6 +69,7 @@ async function boot() {
   });
   capri.wander = config.wander;
   capri.possessWindows = config.possess;
+  capri.gaming = Boolean(config.gamingMode);
   capri.setScale(config.scale);
 
   const mission = new Mission();
@@ -84,6 +86,7 @@ async function boot() {
   };
   const onChip = () => Boolean(chip.visible && mouse && chip.contains(mouse.x, mouse.y, 0));
   const refreshHit = () => {
+    if (capri.fullscreen) return setInteractive(false);
     if (capri.dragging) return setInteractive(true);
     if (!mouse) return setInteractive(false);
     const r = panel.rect();
@@ -168,23 +171,13 @@ async function boot() {
   };
   panel.onChar = (kind) => voice.play('blip', { mood: kind });
   panel.onTalk = (talking) => talking && capri.perform('talk');
+  panel.onFocus = () => host.focusOverlay(true); // Restore typing after a fullscreen exit, only on a user click.
   capri.onMenu = () => host.openMenu();
 
-  // Her guide (guide.js): her welcome on first launch, and "How does it work?" in her menu,
-  // where she takes you to things and points at them.
-  const guide = new Guide({ capri, panel, voice, host, brain });
-  // Talking to her (chat.js): "Talk to her" in her menu, or the button when you click her idle.
   const chat = new Chat({ capri, panel, voice, host, brain });
+  const dictation = new Dictation({ panel, host, language: () => brain.lang,
+    canListen: () => chat.open && !capri.gaming && !capri.fullscreen });
   brain.onTalk = () => chat.start();
-  // the first Claude Code event that ever reaches her: so you know it worked
-  brain.linked = config.linked;
-  brain.onLinked = () => {
-    host.setConfig({ linked: true, welcomed: true });
-    voice.play('hello');
-    capri.perform('hop');
-    panel.say({ kind: 'done', badge: 'LINK', line: brain.t.welcome.linked, hold: 6000 });
-  };
-
   // The demo's second half, after its fake Claude session: everything she does on her own, one
   // after the other, a line before each.
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -259,7 +252,13 @@ async function boot() {
     panel.say({ kind: 'info', line: t.end, hold: 5000 });
   };
 
-  host.onClaudeEvent((evt) => brain.handle(evt));
+  host.onAgentSuggestion(text => {
+    if (!chat.open && typeof text === 'string') panel.say({ kind: 'info', face: 'look', line: text, hold: 8000 });
+  });
+  new FullscreenPresence({ capri, host, onChange: () => {
+    refreshHit();
+    if (capri.fullscreen) dictation.cancel();
+  } });
   host.onWindows((data) => {
     capri.setWindows(data);
     brain.onWindows(data);
@@ -280,6 +279,8 @@ async function boot() {
 
   host.onConfig((cfg) => {
     voice.configure(cfg);
+    capri.gaming = Boolean(cfg.gamingMode);
+    if (capri.gaming || cfg.visible === false) dictation.cancel();
     capri.wander = cfg.wander;
     capri.possessWindows = cfg.possess;
     if (cfg.scale !== capri.scale) capri.setScale(cfg.scale);
@@ -293,20 +294,34 @@ async function boot() {
   host.onCommand(async (cmd) => {
     const t = brain.t;
     switch (cmd.name) {
+      case 'gamingDeparture':
+        chat.close();
+        panel.hide();
+        try {
+          await capri.gamingDeparture();
+        } finally {
+          host.gamingAnimationReady();
+        }
+        break;
+      case 'gamingPrepareReturn':
+        try { capri.prepareGamingReturn(); }
+        finally { host.gamingAnimationReady(); }
+        break;
+      case 'gamingArrival':
+        await capri.gamingArrival();
+        break;
       case 'teleport':
         capri.teleport(capri.spot('random'));
         break;
       case 'status':
         brain.status();
         break;
-      case 'welcome': // "How does it work?" in her menu
-        guide.menu();
-        break;
       case 'chat': // "Talk to her" in her menu
         chat.start();
         break;
-      case 'handoff':
-        chat.handoff();
+      case 'memory':
+        chat.close();
+        chat.start(true);
         break;
       case 'report': // "Mission report" in her menu
         if (capri.stowed) {
@@ -324,12 +339,8 @@ async function boot() {
         }
         break;
       }
-      case 'guide': // --dev: one topic of her guide (welcome, menu, connect, icon, claude, folder)
-        if (cmd.topic === 'welcome') guide.welcome();
-        else if (cmd.topic === 'menu') guide.menu();
-        else if (typeof guide[cmd.topic] === 'function') guide.scene(() => guide[cmd.topic]());
-        break;
       case 'stow': // Ctrl+Alt+C: into her biochip, or back out
+        if (cmd.on) dictation.cancel();
         if (cmd.on) capri.stow();
         else capri.unstow();
         break;
@@ -341,10 +352,6 @@ async function boot() {
         capri.wake();
         if (capri.stance === 'peek') await capri.unpeek();
         if (!capri.gaze({ big: true })) setTimeout(() => capri.gaze({ big: true }), 1500);
-        break;
-      case 'hooks':
-        if (cmd.ok) panel.say({ kind: 'info', line: cmd.action === 'install' ? t.hooksOk : t.hooksRemoved, hold: 6000 });
-        else panel.say({ kind: 'error', line: fmt(t.hooksFail, { error: cmd.error }), hold: 9000 });
         break;
       // --dev helpers
       case 'intro': // her intro again, as when she starts (still: as with Windows' animations off)
@@ -395,10 +402,9 @@ async function boot() {
   if (config.visible === false) capri.stowNow();
   else if (intro) await capri.intro(capri.spot('post'));
   else await capri.materialize(capri.spot('post'));
-  const hooks = await host.hooksStatus();
   if (!config.welcomed) {
     host.setConfig({ welcomed: true });
-    panel.say({ kind: 'info', line: 'CapriGPT is local. Right-click me → Talk to her. Gaming mode and app-closing permissions are in the menu.', hold: 12000 });
+    panel.say({ kind: 'info', line: 'CapriGPT is local. Click me to chat. Right-click for my control room. Everything stays local.', hold: 12000 });
   }
   else panel.say({ kind: 'info', line: pick(brain.t.online), hold: 4000 });
   document.documentElement.dataset.caprigptReady = 'true';
@@ -407,7 +413,7 @@ async function boot() {
   // at a quiet moment.
   setInterval(() => {
     const day = mission.day;
-    const quiet = !brain.busySessions.length && !panel.visible && !guide.running && !capri.busy && !capri.act;
+    const quiet = !brain.busySessions.length && !panel.visible && !capri.busy && !capri.act;
     if (new Date().getHours() < 18 || day.reported || day.missions < 3 || !quiet) return;
     if (capri.stowed || capri.dormant || capri.mode === 'sleep') return;
     if (brain.report()) {

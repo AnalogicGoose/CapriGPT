@@ -78,7 +78,8 @@ export class IntegrationCompanion {
         this.lastPulse = now;
       }
       this.capri.setMode('work');
-      return; // quiet mode: the focus cycle carries all routine work, including turn start
+      this.capri.reactToTool?.(event.tool);
+      return; // Routine work stays silent; quiet action poses sit over the focus cycle.
     } else if (event.stage === 'waiting') {
       this.capri.setMode('alert');
       this.voice.play('alert');

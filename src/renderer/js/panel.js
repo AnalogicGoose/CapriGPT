@@ -1,22 +1,13 @@
 // The transmission panel next to Capri, and the one-line ticker she wears while Claude works.
 
 import { clamp, ease, reducedMotion } from './util.js';
+import { Portrait } from './portrait.js';
 
 const NOISE = '▚▞▙▟░▒#%&/\\<>01XZ';
 
-// Her faces, frames of her from the show (tools/build-cutins.py). A message can ask for one;
-// otherwise it goes with what kind of message it is.
-const FACE_DIR = '../../assets/capri/';
-export const FACES = {
-  calm: 'face-calm.png',   // watching, mouth shut
-  aside: 'face-aside.png', // turned away: a sigh, thinking
-  smug: 'face-smug.png',   // the fang grin, head cocked
-  wide: 'face-wide.png',   // eyes gone round: surprised
-  look: 'face-look.png',   // looking right at you
-  laugh: 'face-laugh.png', // mouth wide open
-  many: 'face-many.png',   // all her eyes on you
-  grin: 'capri-face.png',
-};
+// Existing mood names now share one consistent animated portrait.
+export const FACES = Object.fromEntries(['calm', 'aside', 'smug', 'wide', 'look', 'laugh', 'many', 'grin']
+  .map(name => [name, 'portrait-blink.png']));
 const KIND_FACE = { alert: 'many', done: 'look', error: 'laugh', work: 'calm', idle: 'calm', report: 'smug', chat: 'look' };
 const PRIORITY = { info: 1, idle: 1, work: 2, done: 3, error: 3, report: 3, chat: 3, alert: 4 };
 const DECODE_STEP_MS = 28;
@@ -28,7 +19,8 @@ export class Panel {
     this.tickerEl = ticker;
     this.labels = labels;
     this.line = panel.querySelector('.panel__line');
-    this.portrait = panel.querySelector('.panel__face img');
+    this.portrait = panel.querySelector('.panel__face canvas');
+    this.animatedPortrait = new Portrait(this.portrait);
     this.quote = panel.querySelector('.panel__quote');
     this.reply = panel.querySelector('.panel__reply');
     this.report = panel.querySelector('.panel__report');
@@ -61,11 +53,11 @@ export class Panel {
     this.chatSend = panel.querySelector('.panel__send');
     this.chatClose = panel.querySelector('.panel__close');
     this.note = panel.querySelector('.panel__note');
-    this.chatForm.addEventListener('click', (e) => e.stopPropagation());
+    this.chatForm.addEventListener('click', (e) => { this.onFocus?.(); e.stopPropagation(); });
     this.chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = this.chatInput.value.trim();
-      if (!text || this.chatInput.disabled) return;
+      if (!text || this.chatInput.disabled || this.chatInput.readOnly) return;
       this.chatInput.value = '';
       this.current?.onSend?.(text);
     });
@@ -75,11 +67,8 @@ export class Panel {
     this.chatClose.addEventListener('click', () => this.hide());
 
     this.el.addEventListener('click', () => {
-      if (this.current?.chat) this.chatInput.focus(); // a chat stays until you close it
+      if (this.current?.chat) { this.onFocus?.(); this.chatInput.focus(); } // a chat stays until you close it
       else this.hide();
-    });
-    this.portrait.addEventListener('animationend', (e) => {
-      if (e.animationName === 'face-swap') this.portrait.classList.remove('is-swapping');
     });
   }
 
@@ -148,6 +137,7 @@ export class Panel {
     this.tickerEl.hidden = true;
     this.leaving = false;
     this.el.hidden = false;
+    this.animatedPortrait.setActive(!this.suspended);
     this.el.classList.remove('is-leaving');
     this.replayEnter();
     this.place();
@@ -157,15 +147,9 @@ export class Panel {
     return true;
   }
 
-  // Change her expression; the swap glitches across a couple of drawings.
+  // Retain semantic moods without swapping between mismatched static crops.
   setFace(name) {
-    const src = FACE_DIR + (FACES[name] || FACES.grin);
-    if (this.portrait.getAttribute('src') === src) return;
-    this.portrait.setAttribute('src', src);
-    if (reducedMotion.matches) return;
-    this.portrait.classList.remove('is-swapping');
-    void this.portrait.offsetWidth; // restart the animation
-    this.portrait.classList.add('is-swapping');
+    this.animatedPortrait.setMood(FACES[name] ? name : 'grin');
   }
 
   // Her report card: today's big number, three smaller ones, the longest mission, a footer.
@@ -259,6 +243,7 @@ export class Panel {
   }
 
   renderChat(chat) {
+    if (!chat) this.onSpeechCancel?.();
     this.el.classList.toggle('is-chat', Boolean(chat));
     this.line.classList.remove('is-streaming');
     this.chatForm.hidden = !chat;
@@ -305,6 +290,7 @@ export class Panel {
   setChatBusy(busy) {
     this.chatInput.disabled = busy;
     this.chatSend.disabled = busy;
+    this.onChatBusy?.(busy);
     if (!busy && this.current?.chat) this.chatInput.focus();
   }
 
@@ -364,6 +350,8 @@ export class Panel {
   }
 
   hide() {
+    this.onSpeechCancel?.();
+    this.animatedPortrait.setActive(false);
     clearTimeout(this.hideTimer);
     clearInterval(this.decodeTimer);
     this.onTalk?.(false);
@@ -397,13 +385,16 @@ export class Panel {
   }
 
   suspend() {
+    this.onSpeechCancel?.();
     this.suspended = true;
+    this.animatedPortrait.setActive(false);
     this.el.style.visibility = 'hidden';
     this.tickerEl.style.visibility = 'hidden';
   }
 
   resume() {
     this.suspended = false;
+    this.animatedPortrait.setActive(!this.el.hidden && !this.leaving);
     this.el.style.visibility = '';
     this.tickerEl.style.visibility = '';
     this.place();

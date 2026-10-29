@@ -3,10 +3,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { app } = require('electron');
+const { migratePcSettings, migrateControlRoom } = require('./settings-migration');
 
 const DEFAULTS = {
   gamingMode: false,
-  desktopActions: false,
+  desktopActions: true,
+  windowTracking: true, // decorative geometry only; restore Capri's window sitting
+  agentEnabled: true,
+  privacy: {}, // normalized by pc-context; PC awareness defaults on
   scale: 0.6,        // sprite scale, 0.6 ≈ 250px tall
   muted: false,
   volume: 0.7,
@@ -17,7 +21,7 @@ const DEFAULTS = {
   visible: true,
   welcomed: false,   // she has introduced herself (her welcome panel)
   linked: false,     // a Claude Code event has reached her at least once
-  chatModel: 'llama3.2:3b',
+  chatModel: 'qwen3.5:9b',
 };
 
 let cache = null;
@@ -29,9 +33,15 @@ function file() {
 function load() {
   if (cache) return cache;
   try {
-    cache = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(file(), 'utf8')) };
+    const saved = JSON.parse(fs.readFileSync(file(), 'utf8'));
+    const migrated = migrateControlRoom(migratePcSettings(saved));
+    cache = { ...DEFAULTS, ...migrated };
+    if (migrated !== saved) {
+      try { fs.writeFileSync(file(), JSON.stringify(cache, null, 2)); }
+      catch { console.error('[capri] Could not persist updated PC defaults.'); }
+    }
   } catch {
-    cache = { ...DEFAULTS };
+    cache = { ...DEFAULTS, ...migrateControlRoom(migratePcSettings()) };
   }
   return cache;
 }

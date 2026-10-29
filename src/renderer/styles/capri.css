@@ -178,7 +178,7 @@ body {
 .panel__plate {
   position: relative;
   display: grid;
-  grid-template-columns: 58px 1fr;
+  grid-template-columns: 64px 1fr;
   gap: 12px;
   padding: 14px 16px 16px 14px;
   background: var(--ink);
@@ -192,49 +192,30 @@ body {
 }
 
 .panel__face {
+  position: relative;
   margin: 2px 0 0;
-  width: 58px;
-  height: 58px;
-  background: var(--violet);
+  width: 64px;
+  height: 64px;
+  padding: 2px;
+  box-sizing: border-box;
+  background: linear-gradient(145deg, #e94dff 0%, #7331d5 40%, #3affbb 100%);
   clip-path: polygon(14% 0, 100% 0, 100% 80%, 84% 100%, 0 100%, 0 16%);
 }
 
-.panel__face img {
+.panel__face canvas {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  clip-path: polygon(14% 4%, 96% 4%, 96% 79%, 82% 96%, 4% 96%, 4% 18%);
+  background: #10051d;
+  clip-path: polygon(13% 0, 100% 0, 100% 81%, 84% 100%, 0 100%, 0 15%);
 }
 
-.panel.is-entering .panel__face img,
-.panel[data-kind='alert'] .panel__face img {
-  animation: face-glitch 600ms steps(1, end) 1;
-}
-
-.panel[data-kind='alert'] .panel__face img {
-  animation-iteration-count: infinite;
-  animation-duration: 1.4s;
-}
-
-@keyframes face-glitch {
-  0% { transform: translate(3px, 0); }
-  12% { transform: translate(-4px, 1px); }
-  24% { transform: none; }
-  60% { transform: translate(2px, -1px); }
-  68% { transform: none; }
-}
-
-/* her expression changing: three drawings, knocked sideways, squashed, back */
-.panel__face img.is-swapping {
-  animation: face-swap 170ms steps(1, end) 1;
-}
-
-@keyframes face-swap {
-  0% { transform: translateX(-6px) skewX(-10deg); opacity: 0.7; }
-  33% { transform: translateX(5px) scaleY(0.82); }
-  66% { transform: translateX(-2px); }
-  100% { transform: none; }
+.panel__face::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  pointer-events: none;
+  background: linear-gradient(135deg, #ffffff18, transparent 42%, #7b32db0a);
 }
 
 .panel__body {
@@ -369,6 +350,14 @@ body {
 
 .panel__action:hover {
   background: var(--violet);
+}
+
+.panel__action[data-id^="source-"] {
+  max-width: 100%;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .panel__action.is-primary {
@@ -643,6 +632,7 @@ body {
 }
 
 .panel.is-chat .panel__line {
+  white-space: pre-wrap;
   max-height: min(36vh, 320px);
   padding-block: 2px; /* the display face's glyphs reach past its line box: no scrollbar for that */
   overflow-y: auto;
@@ -705,6 +695,35 @@ body {
 .panel__close {
   padding-inline: 10px;
 }
+
+.panel__mic {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  padding-inline: 8px;
+}
+.panel__mic.is-listening {
+  color: var(--ink);
+  background: var(--red);
+}
+.panel__mic.is-listening::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  width: var(--mic-level, 0%);
+  background: var(--green);
+  transition: width 100ms linear;
+}
+.panel__dictation-status {
+  margin: 7px 0 0;
+  color: var(--green);
+  font: 500 10px/1.5 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.panel__dictation-status.is-error { color: var(--red); }
 
 /* it's an AI, and it's not her voice from the show: said on every chat, plainly */
 .panel__note {
@@ -823,10 +842,17 @@ body {
 
 /* ---------- reduced motion ---------- */
 
+/* Keep panels and chips out of fullscreen while the character teleports away/back. */
+.fullscreen-presence .panel,
+.fullscreen-presence .ticker,
+.fullscreen-presence .chip {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .panel.is-entering .panel__frame,
   .panel.is-leaving .panel__frame,
-  .panel__face img,
   .ticker.is-flash .ticker__plate,
   .ticker__dot,
   .panel__line.is-streaming::after,
