@@ -1,0 +1,71 @@
+name: Prune merged branches
+
+# Weekly, plus a manual run that defaults to a dry run so the list can be read before
+# anything is deleted.
+on:
+    schedule:
+        -   cron: "0 4 * * 1"
+    workflow_dispatch:
+        inputs:
+            dry_run:
+                description: "List what would be deleted without deleting it"
+                type: boolean
+                default: true
+
+permissions:
+    contents: write
+    pull-requests: read
+
+jobs:
+    prune:
+        runs-on: ubuntu-latest
+        steps:
+            -   uses: actions/checkout@v4
+                with:
+                    fetch-depth: 0
+                    token: ${{ secrets.PROPAGATE_TOKEN || github.token }}
+
+            -   name: Delete work branches whose commits already live in development
+                env:
+                    GH_TOKEN: ${{ secrets.PROPAGATE_TOKEN || github.token }}
+                    DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+                run: |
+                    set -euo pipefail
+                    git fetch --quiet --prune origin
+                    PARENT=development
+                    git rev-parse --verify "origin/$PARENT" >/dev/null 2>&1 || { echo "no $PARENT branch yet"; exit 0; }
+
+                    # `main` and `development` are never candidates, whatever their state.
+                    for BRANCH in $(git branch -r --format='%(refname:short)' \
+                                      | sed 's|^origin/||' \
+                                      | grep -E '^(feature|fix)/' || true); do
+                      # The only condition that makes this safe: every commit on the branch is
+                      # already in the parent, so deleting it removes a label, not work. Age alone
+                      # is how you delete someone's unfinished work.
+                      if ! git merge-base --is-ancestor "origin/$BRANCH" "origin/$PARENT" 2>/dev/null; then
+                        echo "keep $BRANCH: has commits that $PARENT does not"
+                        continue
+                      fi
+
+                      # Grace period, so a branch merged this morning is not swept away this afternoon.
+                      AGE=$(( ( $(date +%s) - $(git log -1 --format=%ct "origin/$BRANCH") ) / 86400 ))
+                      if [ "$AGE" -lt 7 ]; then
+                        echo "keep $BRANCH: merged, but only $AGE days old"
+                        continue
+                      fi
+
+                      # An open pull request means someone is still talking about it.
+                      if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+                        echo "keep $BRANCH: an open pull request points at it"
+                        continue
+                      fi
+
+                      # The SHA is logged on purpose: GitHub can restore a deleted branch.
+                      SHA=$(git rev-parse "origin/$BRANCH")
+                      if [ "$DRY_RUN" = "true" ]; then
+                        echo "would delete $BRANCH ($SHA), contained in $PARENT, $AGE days old"
+                      else
+                        echo "delete $BRANCH ($SHA), contained in $PARENT, $AGE days old"
+                        git push --quiet origin --delete "$BRANCH"
+                      fi
+                    done

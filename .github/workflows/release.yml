@@ -1,0 +1,62 @@
+name: Release
+
+# A version tag on main builds the installer. The release stays a draft until its download
+# has been installed and its hash checked by a person.
+on:
+    push:
+        tags: ['v*']
+
+permissions:
+    contents: write
+
+jobs:
+    windows:
+        name: CapriGPT installer (Windows, x64)
+        runs-on: windows-latest
+        defaults:
+            run:
+                shell: bash
+        steps:
+            -   uses: actions/checkout@v4
+                with:
+                    fetch-depth: 0
+            -   uses: actions/setup-node@v4
+                with:
+                    node-version: '24'
+                    cache: npm
+
+            # A tag that disagrees with package.json would publish an installer named after
+            # one version and reporting another. A tag off main is not a deployment.
+            -   name: Check the tag is a deployment of this version
+                run: |
+                    set -euo pipefail
+                    VERSION="${GITHUB_REF_NAME#v}"
+                    test "$(node -p "require('./package.json').version")" = "$VERSION" \
+                      || { echo "Tag $GITHUB_REF_NAME does not match package.json"; exit 1; }
+                    git fetch --quiet origin main
+                    git merge-base --is-ancestor HEAD origin/main \
+                      || { echo "Tag $GITHUB_REF_NAME is not on main"; exit 1; }
+                    test -f "docs/RELEASE_$VERSION.md" \
+                      || { echo "Write docs/RELEASE_$VERSION.md before tagging"; exit 1; }
+                    echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+            -   run: npm ci --no-audit --no-fund
+            -   run: npm test
+            -   name: Build the installer
+                run: npm run dist -- --publish never
+            -   name: Checksum the download
+                run: |
+                    cd dist
+                    sha256sum "CapriGPT-Setup-$VERSION.exe" > SHA256SUMS.txt
+                    cat SHA256SUMS.txt
+
+            -   uses: softprops/action-gh-release@v2
+                with:
+                    draft: true
+                    name: CapriGPT ${{ github.ref_name }}
+                    tag_name: ${{ github.ref_name }}
+                    body_path: docs/RELEASE_${{ env.VERSION }}.md
+                    fail_on_unmatched_files: true
+                    files: |
+                        dist/CapriGPT-Setup-${{ env.VERSION }}.exe
+                        dist/SHA256SUMS.txt
