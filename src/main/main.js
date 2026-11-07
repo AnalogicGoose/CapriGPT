@@ -362,7 +362,7 @@ function updateConfig(patch) {
   // Revoke in-flight work only when its policy changes. Cosmetic changes (volume, scale,
   // Capri coming back out of her chip) must not abort a memory review the user just confirmed.
   const changes = key => Object.hasOwn(patch, key);
-  if (['gamingMode', 'agentEnabled', 'desktopActions', 'privacy'].some(changes)) { agent.cancel(); actions.cancel(); reflection.cancel(); }
+  if (['gamingMode', 'agentEnabled', 'cognitiveEnabled', 'desktopActions', 'privacy'].some(changes)) { agent.cancel(); actions.cancel(); reflection.cancel(); }
   if (['gamingMode', 'privacy'].some(changes)) memoryRequests.cancel();
   if (patch.privacy) patch = { ...patch, privacy: permissions({ ...config.load().privacy, ...patch.privacy }) };
   config.save(patch);
@@ -472,10 +472,14 @@ function registerIpc() {
          const arg = (curiosityCommand[1] || 'status').trim().toLowerCase();
          if (arg === 'status') return { handled: true, text: JSON.stringify({ ...curiosity.status(), reflection: reflection.status() }, null, 2) };
          if (arg === 'list') return { handled: true, text: JSON.stringify(curiosity.list(), null, 2) };
+         if (arg === 'off' || arg === 'on') {
+           updateConfig({ cognitiveEnabled: arg === 'on' });
+           return { handled: true, text: `Curiosity ${arg === 'on' ? 'enabled' : 'paused'}.` };
+         }
          if (arg === 'clear') { reflection.cancel(); curiosity.clear(); return { handled: true, text: 'Curiosity journal cleared.' }; }
          const decision = /^(resolve|dismiss)\s+(\d+)$/.exec(arg);
          if (decision) return { handled: true, text: curiosity.update(Number(decision[2]), decision[1] === 'resolve' ? 'resolved' : 'dismissed') ? 'Question updated.' : 'Open question not found.' };
-         return { handled: true, text: 'Use /curiosity status, /curiosity list, /curiosity resolve <id>, /curiosity dismiss <id>, or /curiosity clear.' };
+         return { handled: true, text: 'Use /curiosity status, /curiosity list, /curiosity on|off, /curiosity resolve <id>, /curiosity dismiss <id>, or /curiosity clear.' };
        }
        const result = await agent.route(text.trim());
       if (result !== null) return { handled: true, text: result };
