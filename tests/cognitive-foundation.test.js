@@ -26,7 +26,7 @@ test('repeated foreground visits create one private, grounded question', async t
   assert.equal(f.engine.list().length,1);
   assert.doesNotMatch(JSON.stringify(question), /Secret document title/);
   assert.equal(await f.engine.foregroundChanged(), null);
-  assert.deepEqual(f.engine.status(),{enabled:true,busy:false,questions:1,modelCalls:0,unsolicitedMessages:0,stage:'observation-only'});
+  assert.deepEqual(f.engine.status(),{enabled:true,busy:false,questions:1,modelCalls:0,unsolicitedMessages:0,stage:'local-reflection'});
 });
 
 test('permissions, gaming and agent shutdown prevent observation', async t => {
