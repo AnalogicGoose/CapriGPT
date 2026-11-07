@@ -24,6 +24,12 @@ class CognitiveFoundation {
         created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS curiosity_subject_status
         ON curiosity_questions(subject, status) WHERE status='open';`);
+    // Forward-compatible local schema migration, independent of personal memory.
+    const columns = this.db.prepare('PRAGMA table_info(curiosity_questions)').all().map(row => row.name);
+    for (const [name, type] of [
+      ['reflection', 'TEXT'], ['priority', 'REAL'], ['next_step', 'TEXT'],
+      ['reflected_at', 'INTEGER'],
+    ]) if (!columns.includes(name)) this.db.exec(`ALTER TABLE curiosity_questions ADD COLUMN ${name} ${type}`);
     this.settings = settings;
     this.context = context;
     this.now = now;
@@ -74,6 +80,27 @@ class CognitiveFoundation {
       VALUES (?,?,?,?,?,?,?)`).run(question, subject, 'foreground-activation-repeated', 0.35, 'open', time, time);
     this.prune();
     return this.db.prepare('SELECT * FROM curiosity_questions WHERE id=?').get(Number(result.lastInsertRowid));
+  }
+
+  openQuestions(limit = 1) {
+    this.prune();
+    return this.db.prepare("SELECT * FROM curiosity_questions WHERE status='open' AND reflected_at IS NULL ORDER BY created_at LIMIT ?")
+      .all(Math.min(10, Math.max(1, limit)));
+  }
+
+  recordReflection(id, reflection) {
+    if (!this.allowed() || this.closed) return false;
+    // Validate at the trust boundary even if a caller has already validated.
+    const { validateReflection } = require('./cognitive-reflection');
+    const value = validateReflection(reflection);
+    const now = this.now();
+    const result = this.db.prepare(`UPDATE curiosity_questions
+      SET question=?,reflection=?,confidence=?,priority=?,next_step=?,reflected_at=?,updated_at=?,
+          status=CASE WHEN ?='dismiss' THEN 'dismissed' ELSE status END
+      WHERE id=? AND status='open' AND reflected_at IS NULL`)
+      .run(value.question, JSON.stringify({ hypothesis:value.hypothesis, counterpoint:value.counterpoint }),
+        value.confidence, value.priority, value.next_step, now, now, value.next_step, id);
+    return Number(result.changes) === 1;
   }
 
   list(limit = 20) {
