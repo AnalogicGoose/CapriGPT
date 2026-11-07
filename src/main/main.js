@@ -35,6 +35,8 @@ const { WebTools } = require('./web-tools');
 const { DesktopTools } = require('./desktop-tools');
 const { createAgentBrowser } = require('./agent-browser');
 const { WorldState } = require('./world-state');
+const { CognitiveFoundation } = require('./cognitive-foundation');
+const { ReflectionEngine } = require('./cognitive-reflection');
 const capabilities = require('./capabilities');
 let memoryStore;
 const memory = () => {
@@ -46,7 +48,7 @@ const memory = () => {
 const pcContext = new ContextService({ settings: () => config.load() });
 const world = new WorldState({ context: pcContext });
 const closeApp = require('./action-confirmation').createCloseHandler({ config, apps, dialog });
-const foreground = new ForegroundPriority(() => agent);
+const foreground = new ForegroundPriority(() => [agent, reflection]);
 const agent = new Agent({
   settings: () => config.load(), world, models: () => ollama.models(), apps, close: closeApp,
   infer: (request, signal) => ollama.chat(request, () => {}, signal),
@@ -92,6 +94,16 @@ const DEV = process.argv.includes('--dev');
 const smokeTest = process.argv.some((arg) => path.basename(arg) === 'smoke-electron.js');
 app.setPath('userData', smokeTest && process.env.CAPRIGPT_TEST_PROFILE
   ? process.env.CAPRIGPT_TEST_PROFILE : path.join(app.getPath('appData'), 'CapriGPT'));
+const curiosity = new CognitiveFoundation({
+  file: path.join(app.getPath('userData'), 'curiosity.sqlite'),
+  settings: () => config.load(), context: pcContext,
+});
+const reflection = new ReflectionEngine({
+  journal: curiosity, settings: () => config.load(), models: () => ollama.models(),
+  infer: (request, signal) => ollama.chat(request, () => {}, signal),
+  canRun: () => foreground.active === 0 && !chats.size && !agent.busy &&
+    !actions.busy && !memoryRequests.busy && !gamingTransition && !fullscreenState.active,
+});
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 const OLLAMA_SITE = 'https://ollama.com';
@@ -239,6 +251,7 @@ async function setGamingMode(on) {
       // Wait for cancelled requests to finish before sending the unload request.
       await Promise.allSettled(pending.map(({ done }) => done));
       await agent.done;
+      await reflection.done;
       await actions.done;
       agentBrowser.stop();
       try { await Promise.all([...new Set([pickModel(), capabilities.AGENT_MODEL])].map(model => ollama.unload(model))); }
@@ -258,7 +271,13 @@ async function setGamingMode(on) {
 function watchWindows() {
   if (windowWatch || config.load().gamingMode || !config.load().windowTracking) return;
   windowWatch = startWindowWatch({ overlay, onUpdate: (data) => {
-    if (lastWindows && lastWindows.fg !== data.fg) agent.event('foreground-change');
+    if (lastWindows && lastWindows.fg !== data.fg) {
+      agent.event('foreground-change');
+      // Cheap, bounded observation only. No AI call and no unsolicited message.
+      curiosity.foregroundChanged().then(question => {
+        if (question && !question.reflected_at) reflection.schedule();
+      }).catch(() => {});
+    }
     lastWindows = data;
     overlay?.webContents.send('windows:update', data);
   } });
@@ -343,7 +362,7 @@ function updateConfig(patch) {
   // Revoke in-flight work only when its policy changes. Cosmetic changes (volume, scale,
   // Capri coming back out of her chip) must not abort a memory review the user just confirmed.
   const changes = key => Object.hasOwn(patch, key);
-  if (['gamingMode', 'agentEnabled', 'desktopActions', 'privacy'].some(changes)) { agent.cancel(); actions.cancel(); }
+  if (['gamingMode', 'agentEnabled', 'cognitiveEnabled', 'desktopActions', 'privacy'].some(changes)) { agent.cancel(); actions.cancel(); reflection.cancel(); }
   if (['gamingMode', 'privacy'].some(changes)) memoryRequests.cancel();
   if (patch.privacy) patch = { ...patch, privacy: permissions({ ...config.load().privacy, ...patch.privacy }) };
   config.save(patch);
@@ -448,7 +467,21 @@ function registerIpc() {
     try {
       if (typeof text !== 'string' || text.length > 12000) throw Error('Invalid message.');
       if (/^\/(?:agent cancel|cancel)$/i.test(text.trim())) { actions.cancel(); memoryRequests.cancel(); }
-      const result = await agent.route(text.trim());
+      const curiosityCommand = /^\/curiosity(?:\s+(.*))?$/i.exec(text.trim());
+       if (curiosityCommand) {
+         const arg = (curiosityCommand[1] || 'status').trim().toLowerCase();
+         if (arg === 'status') return { handled: true, text: JSON.stringify({ ...curiosity.status(), reflection: reflection.status() }, null, 2) };
+         if (arg === 'list') return { handled: true, text: JSON.stringify(curiosity.list(), null, 2) };
+         if (arg === 'off' || arg === 'on') {
+           updateConfig({ cognitiveEnabled: arg === 'on' });
+           return { handled: true, text: `Curiosity ${arg === 'on' ? 'enabled' : 'paused'}.` };
+         }
+         if (arg === 'clear') { reflection.cancel(); curiosity.clear(); return { handled: true, text: 'Curiosity journal cleared.' }; }
+         const decision = /^(resolve|dismiss)\s+(\d+)$/.exec(arg);
+         if (decision) return { handled: true, text: curiosity.update(Number(decision[2]), decision[1] === 'resolve' ? 'resolved' : 'dismissed') ? 'Question updated.' : 'Open question not found.' };
+         return { handled: true, text: 'Use /curiosity status, /curiosity list, /curiosity on|off, /curiosity resolve <id>, /curiosity dismiss <id>, or /curiosity clear.' };
+       }
+       const result = await agent.route(text.trim());
       if (result !== null) return { handled: true, text: result };
       const local = await personal.route(text);
       if (local.handled) return local;
@@ -726,13 +759,14 @@ function main() {
     screen.on('display-removed', () => { fitOverlay(); rebuildTray(); });
   });
 
-  app.on('before-quit', () => { speech.cancel(); agent.cancel(); actions.cancel(); memoryRequests.cancel(); for (const { abort } of chats.values()) abort.abort(); });
+  app.on('before-quit', () => { speech.cancel(); agent.cancel(); reflection.close(); actions.cancel(); memoryRequests.cancel(); for (const { abort } of chats.values()) abort.abort(); });
   app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     windowWatch?.stop();
     fullscreenWatch?.stop();
     clearTimeout(fullscreenHideTimer);
     memoryStore?.close();
+    curiosity.close();
   });
   app.on('window-all-closed', (e) => e.preventDefault());
 }
