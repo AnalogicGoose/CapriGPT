@@ -20,7 +20,25 @@ test('runtime identity distinguishes a current build from files changed since st
   assert.equal(status().currentSource, true);
   assert.match(status().build, /^[a-f0-9]{12}$/);
   fs.writeFileSync(source, 'updated');
-  assert.equal(status().currentSource, false);
+  assert.equal(status({ fresh: true }).currentSource, false);
+});
+
+test('routine runtime checks reuse a recent fingerprint; explicit checks always rehash', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'capri-build-'));
+  t.after(() => fs.rmSync(root, { force: true, recursive: true }));
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.writeFileSync(path.join(root, 'package.json'), '{}');
+  const source = path.join(root, 'src', 'main.js');
+  fs.writeFileSync(source, 'original');
+  let at = 0;
+  const status = runtimeInfo(root, '0.4.0', { now: () => at, maxAgeMs: 3000 });
+  assert.equal(status().currentSource, true);
+  fs.writeFileSync(source, 'updated');
+  assert.equal(status().currentSource, true, 'cached within the window');
+  assert.equal(status({ fresh: true }).currentSource, false);
+  fs.writeFileSync(source, 'original');
+  at = 3000;
+  assert.equal(status().currentSource, true, 'rehashed once the window passed');
 });
 
 test('hidden Ollama launch accepts only the fixed executable and loopback host; environment is Unicode and terminated', () => {

@@ -121,17 +121,17 @@ The code is MIT; preserve `LICENSE` and upstream attribution. **The character im
 
 See [CODEX-CONNECTION.md](CODEX-CONNECTION.md) to activate the installed local Codex notification hooks and use the previewed ChatGPT/Codex handoff. Ordinary ChatGPT conversations are not automatically observed. Optional paid OpenAI routing remains planned in `ROADMAP.md`.
 
-## GitHub fork
+## GitHub repository
 
-The hosted fork is [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop). The local prototype branch tracks `origin/codex/caprigpt-local`. `upstream` points to the original mochiiwuff repository.
+The project now lives at [AnalogicGoose/CapriGPT](https://github.com/AnalogicGoose/CapriGPT). `development` is the working trunk and `main` holds deployments only; work happens on `feature/<slug>` or `fix/<slug>` branches cut from `development`, as described in [docs/BRANCHING.md](docs/BRANCHING.md). The earlier fork, [Chocoyito1/capri-desktop](https://github.com/Chocoyito1/capri-desktop) (`codex/caprigpt-local`), is history and no longer receives changes.
 
-To obtain this prototype on another PC:
+To work on CapriGPT from another PC:
 
 ```powershell
-git clone --branch codex/caprigpt-local https://github.com/Chocoyito1/capri-desktop.git CapriGPT
+git clone --branch development https://github.com/AnalogicGoose/CapriGPT.git CapriGPT
 cd CapriGPT
 npm.cmd ci
-ollama pull llama3.2:3b
+ollama pull qwen3.5:9b
 npm.cmd start
 ```
 

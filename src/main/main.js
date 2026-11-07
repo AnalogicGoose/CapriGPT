@@ -385,7 +385,7 @@ async function settingsAction(name, value) {
     case 'memory-export': return (await personal.route('/memory export')).text;
     case 'memory-delete': return (await personal.route('/memory delete-all')).text;
     case 'memory-open': if (config.load().gamingMode) throw Error('Resume Capri before reviewing memory.'); sendCommand('memory'); break;
-    case 'refresh': return runtime().currentSource ? 'Current local source is loaded.' : 'Local changes found. Restart Capri to load them.';
+    case 'refresh': return runtime({ fresh: true }).currentSource ? 'Current local source is loaded.' : 'Local changes found. Restart Capri to load them.';
     case 'restart': app.relaunch(); app.quit(); break;
     case 'quit': app.quit(); break;
   }
@@ -648,7 +648,7 @@ function main() {
   app.on('second-instance', () => {
     // Clicking the desktop shortcut after an update must not silently keep an
     // idle, stale copy alive. Active replies are left for the explicit tray restart.
-    if (!runtime().currentSource && !chats.size) { app.relaunch(); app.quit(); }
+    if (!runtime({ fresh: true }).currentSource && !chats.size) { app.relaunch(); app.quit(); }
     else sendCommand('status');
   });
   if (process.platform === 'win32') app.setAppUserModelId('caprigpt.desktop');
@@ -715,9 +715,12 @@ function main() {
     });
     bridge.once('listening', () => {
       const target = connectionFile();
-      fs.mkdirSync(path.dirname(target), { recursive: true });
       // Publish only after we own the port. A failed second launch must not replace it.
-      fs.writeFileSync(target, JSON.stringify({ port: PORT, token: integrationToken }), { mode: 0o600 });
+      // A failure here only disables Codex notifications; it must not crash the app.
+      try {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, JSON.stringify({ port: PORT, token: integrationToken }), { mode: 0o600 });
+      } catch (err) { console.error('[capri] Codex connection file unavailable:', err.message); }
     });
     globalShortcut.register('Control+Alt+C', () => toggleVisible());
     ollamaStartup.then(() => refreshModels()); // for her menu's model list
