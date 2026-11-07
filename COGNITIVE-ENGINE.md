@@ -1,30 +1,43 @@
-# Cognitive Engine — Foundation (Phase 1)
+# Capri Cognitive Engine — Foundations and Private Reflection
 
-This first slice introduces a local-only, **observation-only** curiosity journal. It is deliberately not an autonomous conversational system yet.
+This branch implements the first two stages of a bounded, local-first curiosity pipeline. **It does not enable autonomous tool execution, spontaneous conversations, screen capture or speech.**
 
-## How it works
+## Event → question → local reflection
 
-- Existing Windows foreground-change notifications trigger a bounded context snapshot.
-- The observer extracts **only a validated foreground application name**. It neither stores window titles nor records keyboard input, screen content or conversation transcripts.
-- Three observations of the same application within ten minutes produce one low-confidence open question (30-minute per-app cooldown). Repeated unresolved questions are deduplicated.
-- Questions are stored in a separate `curiosity.sqlite` file within the Capri user-data profile, bounded to 100 records and pruned after 30 days.
-- The existing privacy policy is checked before and after each asynchronous observation. Agent disabled, gaming mode, revoked foreground/event permissions, or shutdown suppresses observation.
-- No automatic model call, user notification or tool execution occurs in this phase.
+1. The existing Windows foreground-change watcher triggers the `CognitiveFoundation` observer through the permissioned `ContextService`.
+2. Three visits to the same application within ten minutes create one tentative question (30-minute per-app cooldown).
+3. The observer stores **only a validated application name and a fixed evidence code** in a separate SQLite journal. No window titles, process lists, messages, screenshots or keystrokes are stored.
+4. The `ReflectionEngine` schedules a low-priority local Ollama inference. It asks the existing `qwen3.5:9b` agent model for schema-constrained JSON: a revised question, hypothesis, counterpoint, confidence, priority and `wait | ask_later | dismiss`.
+5. The result is fully validated before persisting. Hypotheses are explicitly speculative; `ask_later` only records a possibility and **does not** send a message.
+6. Reflections survive app restart. Unprocessed questions remain in the journal and can be processed on a later qualifying event.
 
-## Local commands
+## Safety and runtime limits
 
-- `/curiosity status` — journal status, including whether observation is available
-- `/curiosity list` — inspect recent questions
-- `/curiosity resolve <id>` — resolve a question
-- `/curiosity dismiss <id>` — dismiss a question
-- `/curiosity clear` — delete all curiosity questions
+- Existing agent, gaming mode, foreground context and event-observation settings gate the pipeline. Permissions are rechecked after asynchronous observation and before saving model output.
+- The reflection engine uses the existing local Ollama integration. It cannot use the web or any desktop tools. It does not write to authorized personal memories.
+- At most **two autonomous reflection model calls per rolling hour** while Capri is running, including unsuccessful calls; maximum one concurrent job; 45-second cancellation deadline.
+- User requests cancel background reflection through `ForegroundPriority`. An in-progress reflection is also cancelled on game mode, policy changes, application shutdown, or explicit pause.
+- Only meaningful observed events schedule reflection; there is no continuous model inference loop.
+- Journal holds at most 100 questions and prunes entries older than 30 days.
+- Default `cognitiveEnabled=true` can be disabled through the local `/curiosity off` command. Questions remain until the user deletes them.
 
-## Limitations and next steps
+## User commands
 
-This is a safe foundation, not proof of conscious thought, and a repeated app focus alone does not reliably imply that the user needs assistance. The current questions must be treated as speculative, and cannot initiate conversation.
+- `/curiosity status`: view observation and model-assistance status.
+- `/curiosity list`: inspect questions and stored reflection records.
+- `/curiosity on` / `/curiosity off`: enable or pause cognition.
+- `/curiosity resolve <id>`: mark a question resolved.
+- `/curiosity dismiss <id>`: dismiss a question.
+- `/curiosity clear`: delete the entire curiosity journal.
 
-Next: model-assisted structured curiosity with evidence-based priority scoring, persistent goal state, bounded reflection, explicit source tagging, low-priority inference coordinated with the existing ForegroundPriority, and a separate, user-controllable interruption policy. Use real outcomes and feedback to evaluate usefulness before enabling spontaneous speech.
+## What this is not
 
-## Testing
+This is bounded self-questioning behavior, not evidence of consciousness. Repeated app focus does not prove a user wants help. Model output must not be treated as observation or authorization, and it never initiates a spoken conversation at this stage.
 
-`npm test` includes `tests/cognitive-foundation.test.js`. Windows Electron smoke tests are still necessary for real-world foreground observation and app lifecycle behavior.
+## Next milestone
+
+Add explicit user-goal and feedback signals with verified provenance; measure useful questions and false positive rates; add opt-in interruption policies and a soft, non-invasive UI for inspecting curiosity. Only then consider proactive conversation.
+
+## Validation
+
+Unit tests include the reflection output schema, numeric limits, local inference orchestration, permission gating, foreground cancellation, error handling, duplicate questions and retention. Run `npm test` and relevant Windows Electron smoke tests before merging.
