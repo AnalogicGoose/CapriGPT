@@ -130,7 +130,7 @@ class CognitiveFoundation {
 
   status() {
     return { enabled: this.allowed(), busy: this.busy, questions: this.list().length,
-      modelCalls: 0, unsolicitedMessages: 0, stage: 'observation-only' };
+      modelCalls: 0, unsolicitedMessages: 0, stage: 'local-reflection' };
   }
 
   close() {
