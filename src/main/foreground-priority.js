@@ -6,11 +6,13 @@ class ForegroundPriority {
   async run(work) {
     this.active++;
     try {
-      const agent=this.background();
-      if(agent.busy&&agent.reason!=='user-request') {
-        const done=agent.done;
-        agent.cancel();
-        await done;
+      const agents=this.background();
+      for(const agent of (Array.isArray(agents)?agents:[agents])) {
+        if(agent?.busy&&agent.reason!=='user-request') {
+          const done=agent.done;
+          agent.cancel();
+          await done;
+        }
       }
       return await work();
     } finally { this.active--; }
