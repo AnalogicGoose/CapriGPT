@@ -5,8 +5,14 @@ const path = require('node:path');
 const http = require('node:http');
 const { fromHook } = require('../src/main/codex-events');
 
-function connectionFile() {
-  return process.env.CAPRIGPT_CONNECTION_FILE || path.resolve(__dirname, '..', '.caprigpt-local', 'integration.json');
+// An installed Capri loads this file from resources/app.asar, while Codex runs it with
+// node from resources/app.asar.unpacked. The archive is read-only and the two folders
+// differ, so neither can hold the connection file: both use Capri's per-user data folder,
+// which is where main.js keeps its other data. A source checkout keeps its own file.
+function connectionFile(dir = __dirname, env = process.env) {
+  if (env.CAPRIGPT_CONNECTION_FILE) return env.CAPRIGPT_CONNECTION_FILE;
+  if (/[\\/]app\.asar(?:\.unpacked)?(?:[\\/]|$)/i.test(dir) && env.APPDATA) return path.join(env.APPDATA, 'CapriGPT', 'integration.json');
+  return path.resolve(dir, '..', '.caprigpt-local', 'integration.json');
 }
 function record(status) {
   try {

@@ -18,12 +18,20 @@ function sourceFingerprint(root) {
   return hash.digest('hex').slice(0, 12);
 }
 
-function runtimeInfo(root, version) {
+// The fingerprint reads and hashes every source file synchronously on the main process,
+// and the control room asks for it on every settings update. Reuse it for a few seconds.
+function runtimeInfo(root, version, { now = Date.now, maxAgeMs = 3000 } = {}) {
   const startedAt = new Date().toISOString();
   const build = sourceFingerprint(root);
-  return () => {
-    let currentSource = false;
-    try { currentSource = sourceFingerprint(root) === build; } catch {}
+  let checked = null;
+  // `fresh`: an explicit check (the control room's button, a relaunch decision) always rehashes.
+  return ({ fresh = false } = {}) => {
+    if (fresh || !checked || now() - checked.at >= maxAgeMs) {
+      let current = false;
+      try { current = sourceFingerprint(root) === build; } catch {}
+      checked = { at: now(), current };
+    }
+    const currentSource = checked.current;
     return { version, build, root, pid: process.pid, startedAt, currentSource,
       contextBackend: 'native-win32', terminalHelpers: false, ollamaHost: require('./ollama').base() };
   };

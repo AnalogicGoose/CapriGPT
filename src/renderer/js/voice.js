@@ -67,6 +67,13 @@ export class Voice {
     if (ctx.state === 'suspended') ctx.resume();
     const custom = this.custom.get(cue);
     if (custom) {
+      // A streamed answer asks for a blip per chunk; a custom sample gets the same
+      // throttle as the built-in one instead of stacking dozens of copies.
+      if (cue === 'blip') {
+        const now = performance.now();
+        if (now - this.lastBlip < 45) return;
+        this.lastBlip = now;
+      }
       const src = ctx.createBufferSource();
       src.buffer = custom;
       src.connect(this.master);

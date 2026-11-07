@@ -252,6 +252,9 @@ app.whenReady().then(async () => {
       store.remember('Gabriel lives in Nicaragua.','explicit',{profile:true});store.close();
       win.webContents.send('capri:command',{name:'chat'});
       for(let i=0;i<80&&!await js("document.querySelector('#panel').classList.contains('is-chat')");i++)await pause(100);
+      // A real foreground change during startup can run the agent before the model is mocked,
+      // which starts its five-minute event cooldown and would leave `started` pending forever.
+      priorityTestAgent.lastEvent=-Infinity;
       const background=priorityTestAgent.run('','resume');await started;
       await js("document.querySelector('.panel__input').value='what do you know about me?';document.querySelector('.panel__chat').requestSubmit()");
       for(let i=0;i<100&&await js("document.querySelector('.panel__input').disabled");i++)await pause(100);

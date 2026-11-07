@@ -37,7 +37,7 @@ function load() {
     const migrated = migrateControlRoom(migratePcSettings(saved));
     cache = { ...DEFAULTS, ...migrated };
     if (migrated !== saved) {
-      try { fs.writeFileSync(file(), JSON.stringify(cache, null, 2)); }
+      try { writeAtomic(file(), JSON.stringify(cache, null, 2)); }
       catch { console.error('[capri] Could not persist updated PC defaults.'); }
     }
   } catch {
@@ -46,11 +46,20 @@ function load() {
   return cache;
 }
 
+// Write a sibling file and rename it over the old one. A crash mid-write used to leave a
+// truncated config.json, and an unreadable config silently falls back to the defaults,
+// which turns every PC-awareness opt-out back on.
+function writeAtomic(target, text) {
+  const temp = `${target}.tmp`;
+  fs.writeFileSync(temp, text);
+  fs.renameSync(temp, target);
+}
+
 function save(patch) {
   cache = { ...load(), ...patch };
   try {
     fs.mkdirSync(path.dirname(file()), { recursive: true });
-    fs.writeFileSync(file(), JSON.stringify(cache, null, 2));
+    writeAtomic(file(), JSON.stringify(cache, null, 2));
   } catch (err) {
     console.error('[capri] could not save config:', err.message);
   }

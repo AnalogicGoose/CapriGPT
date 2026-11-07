@@ -48,7 +48,7 @@ class PersonalAssistant {
     if (isAppQuery(input) || named) {
       this.lastAppQuestion = Date.now();
       if (!permissions(this.settings().privacy).contextProcesses) {
-        return reply('Running-app context is off. Enable “Running apps and processes” in the control room → PC awareness, then ask again.');
+        return reply('Running-app context is off. Enable “Open apps & processes” in the control room → PC awareness, then ask again.');
       }
       const snapshot = await this.context.snapshot('running-app-question', ['contextProcesses']);
       if (!permissions(this.settings().privacy).contextProcesses) return reply('Running-app permission was turned off.');
