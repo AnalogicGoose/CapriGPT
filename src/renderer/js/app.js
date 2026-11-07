@@ -319,8 +319,7 @@ async function boot() {
       case 'chat': // "Talk to her" in her menu
         chat.start();
         break;
-      case 'memory':
-        chat.close();
+      case 'memory': // start() swaps an open AI chat for the local commands panel
         chat.start(true);
         break;
       case 'report': // "Mission report" in her menu

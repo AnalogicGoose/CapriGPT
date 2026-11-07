@@ -12,6 +12,7 @@ const {
 const config = require('./config');
 const { LANGS } = require('./labels');
 const { createSettingsWindow } = require('./settings-window');
+const { overlayPatch } = require('./settings-policy');
 const { createBridge } = require('./bridge');
 const { startWindowWatch } = require('./windows');
 const { startFullscreenWatch } = require('./fullscreen');
@@ -339,9 +340,11 @@ function rendererConfig() {
 
 function updateConfig(patch) {
   if (patch.gamingMode === true || patch.visible === false) speech.cancel();
-  agent.cancel(); // revoke in-flight decisions and proposals before applying new policy
-  memoryRequests.cancel();
-  if (['gamingMode', 'agentEnabled', 'desktopActions', 'privacy'].some(key => Object.hasOwn(patch,key))) actions.cancel();
+  // Revoke in-flight work only when its policy changes. Cosmetic changes (volume, scale,
+  // Capri coming back out of her chip) must not abort a memory review the user just confirmed.
+  const changes = key => Object.hasOwn(patch, key);
+  if (['gamingMode', 'agentEnabled', 'desktopActions', 'privacy'].some(changes)) { agent.cancel(); actions.cancel(); }
+  if (['gamingMode', 'privacy'].some(changes)) memoryRequests.cancel();
   if (patch.privacy) patch = { ...patch, privacy: permissions({ ...config.load().privacy, ...patch.privacy }) };
   config.save(patch);
   if (Object.hasOwn(patch, 'displayId')) fitOverlay();
@@ -467,7 +470,12 @@ function registerIpc() {
     return { x: p.x - b.x, y: p.y - b.y, inside: p.x >= b.x && p.y >= b.y && p.x < b.x + b.width && p.y < b.y + b.height };
   });
   ipcMain.handle('config:get', () => rendererConfig());
-  ipcMain.handle('config:set', (_e, patch) => updateConfig(patch));
+  // Smoke tests and --dev drive any setting through the overlay; normal runs only
+  // accept the overlay's own visibility/welcome flags.
+  ipcMain.handle('config:set', (event, patch) => {
+    if (event.sender !== overlay?.webContents) throw Error('Overlay required.');
+    return updateConfig(DEV || smokeTest ? patch : overlayPatch(patch));
+  });
   ipcMain.handle('demo:window', (_e, open) => demoWindow(open));
   // right-clicking her: the same menu as the tray icon (which Windows often hides behind the ^ by the clock)
   ipcMain.on('menu:open', openSettings);

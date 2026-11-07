@@ -40,7 +40,9 @@ export class Chat {
 
   async start(commandsOnly = false) {
     const { capri, host, t } = this;
-    if (this.open && commandsOnly !== this.commandsOnly) this.close();
+    // Switching modes: hide the open chat panel (its onLeave closes this chat). Closing
+    // alone would leave the panel up, and it refuses a new chat on top of a chat.
+    if (this.open && commandsOnly !== this.commandsOnly) this.panel.hide();
     if (this.open) {
       this.panel.chatInput.focus();
       return;

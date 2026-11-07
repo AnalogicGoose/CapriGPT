@@ -45,7 +45,11 @@ async function close(name, { force = false } = {}) {
   if (force) native.forceClose(app.ids, app.name);
   else native.requestClose(app.handles);
   await new Promise(resolve => setTimeout(resolve, force ? 600 : 2500));
-  return { running: native.processRows().some(row => row.name === app.name) };
+  // Only the processes that owned its windows count: a closed browser often leaves
+  // unrelated background processes with the same name, which are not "still open".
+  // An app that hid in the tray keeps its window process alive, so it still counts.
+  const alive = new Set(native.processRows().filter(row => row.name === app.name).map(row => row.id));
+  return { running: app.ids.some(id => alive.has(id)) };
 }
 
 module.exports = { list, find, close };

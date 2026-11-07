@@ -68,8 +68,13 @@ class ActionAgent {
   cancel(){this.abort?.abort();this.browser.stop?.();this.context.interrupt();}
   launchName(text) {
     if(typeof text!=='string')return null;
+    const explicit=/^\/do\s+/i.test(text);
     const command=text.replace(/^\/do\s+/i,'').trim();
-    return this.desktop.matchName?.(launchTarget(command)||command)||null;
+    const target=launchTarget(command);
+    // A bare app name is a launch shorthand, but a bare name asked as a question
+    // ("calculator?") is not, unless it answers a pending app-choice question.
+    if(!target&&!explicit&&/\?\s*$/.test(command)&&!this.context.snapshot().pending)return null;
+    return this.desktop.matchName?.(target||command)||null;
   }
   contextualLaunch(text) {
     if(typeof text!=='string'||text.length>2000)return null;

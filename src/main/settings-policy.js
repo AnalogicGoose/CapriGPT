@@ -21,4 +21,16 @@ function settingsPatch(input, displays = []) {
   }
   return result;
 }
-module.exports = { settingsPatch };
+// The overlay only records that Capri came back out or finished her welcome.
+// Policy (gaming, agent, desktop actions, privacy, model) changes go through the
+// control room's settingsPatch instead.
+function overlayPatch(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Invalid settings.');
+  const result = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (['visible', 'welcomed'].includes(key) && typeof value === 'boolean') result[key] = value;
+    else throw Error('Unknown or invalid preference.');
+  }
+  return result;
+}
+module.exports = { settingsPatch, overlayPatch };

@@ -55,7 +55,6 @@
     "@fontsource/chakra-petch": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "fast-xml-parser": "5.11.2",
-    "fflate": "0.8.3",
     "koffi": "3.3.4"
   },
   "build": {
