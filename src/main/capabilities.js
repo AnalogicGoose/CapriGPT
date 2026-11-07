@@ -1,7 +1,7 @@
 'use strict';
 
 // One main-process source of truth. Change the revision when adding/removing a skill.
-const REVISION = 9;
+const REVISION = 10;
 const AGENT_MODEL = 'qwen3.5:9b';
 function registry(cfg = {}) {
   const p = require('./pc-context').permissions(cfg.privacy);
@@ -29,6 +29,10 @@ function registry(cfg = {}) {
       task_context: { available: true, status: 'Recent task goals and observed outcomes remain in RAM for ten minutes; app-choice questions expire after two minutes. Use this structured context for corrections and follow-ups. App launch entries are positive evidence, not an exhaustive installation inventory. Do not call an app uninstalled because an alias or lookup failed.' },
       speech: { available: process.platform === 'win32' && !cfg.gamingMode,
         status: 'Local Whisper large-v3-turbo dictation with Silero speech detection from the microphone button next to Send. Uses the default microphone, automatic language detection including English and Spanish, and GPU acceleration when available. No Windows speech language packs or API key. Capture starts only on the microphone button and stops on request, chat close, fullscreen or Gaming mode. Recognized phrases go to the draft for review and never auto-send. Audio stays in memory on this PC; no recording is saved. Model files download on first use if missing. No spoken synthesis installed; existing character sounds remain.' },
+      cognition: { available: cfg.cognitiveEnabled !== false && cfg.agentEnabled !== false && !cfg.gamingMode,
+        phase: 'Private local question generation and structured reflection from repeated app focus. No autonomous tools, speech or unsolicited chat.',
+        commands: '/curiosity status; /curiosity list; /curiosity on; /curiosity off; /curiosity resolve <id>; /curiosity dismiss <id>; /curiosity clear',
+        limits: 'At most two local inference calls per hour while app is active, and zero unsolicited messages.' },
       accessibility: { available: false, status: 'Adapter pathway only; no general clicking, typing, file access, or UI tree reader installed.' },
     },
   };
