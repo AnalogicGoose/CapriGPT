@@ -87,6 +87,8 @@ test('an installed Capri and its Codex hook agree on a writable connection file'
   // Capri's main process loads the hook from the archive; Codex runs it from the unpacked copy.
   assert.equal(connectionFile('C:\\Apps\\CapriGPT\\resources\\app.asar\\hooks', env), expected);
   assert.equal(connectionFile('C:\\Apps\\CapriGPT\\resources\\app.asar.unpacked\\hooks', env), expected);
-  assert.equal(connectionFile('C:\\DEV\\CapriGPT\\hooks', env), path.resolve('C:\\DEV\\CapriGPT', '.caprigpt-local', 'integration.json'));
+  // A source checkout uses native paths, so this holds on any development host.
+  const checkout = path.join(os.tmpdir(), 'CapriGPT');
+  assert.equal(connectionFile(path.join(checkout, 'hooks'), env), path.join(checkout, '.caprigpt-local', 'integration.json'));
   assert.equal(connectionFile('C:\\Apps\\CapriGPT\\resources\\app.asar\\hooks', { ...env, CAPRIGPT_CONNECTION_FILE: 'X:\\test.json' }), 'X:\\test.json');
 });
