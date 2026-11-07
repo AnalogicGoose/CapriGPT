@@ -46,10 +46,6 @@ const memory = () => {
 };
 const pcContext = new ContextService({ settings: () => config.load() });
 const world = new WorldState({ context: pcContext });
-const curiosity = new CognitiveFoundation({
-  file: path.join(app.getPath('userData'), 'curiosity.sqlite'),
-  settings: () => config.load(), context: pcContext,
-});
 const closeApp = require('./action-confirmation').createCloseHandler({ config, apps, dialog });
 const foreground = new ForegroundPriority(() => agent);
 const agent = new Agent({
@@ -97,6 +93,10 @@ const DEV = process.argv.includes('--dev');
 const smokeTest = process.argv.some((arg) => path.basename(arg) === 'smoke-electron.js');
 app.setPath('userData', smokeTest && process.env.CAPRIGPT_TEST_PROFILE
   ? process.env.CAPRIGPT_TEST_PROFILE : path.join(app.getPath('appData'), 'CapriGPT'));
+const curiosity = new CognitiveFoundation({
+  file: path.join(app.getPath('userData'), 'curiosity.sqlite'),
+  settings: () => config.load(), context: pcContext,
+});
 const PORT = Number(process.env.CAPRI_PORT) || 47823;
 const SOUND_EXT = /\.(mp3|wav|ogg|m4a)$/i;
 const OLLAMA_SITE = 'https://ollama.com';
