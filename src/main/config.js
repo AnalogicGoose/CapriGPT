@@ -10,6 +10,7 @@ const DEFAULTS = {
   desktopActions: true,
   windowTracking: true, // decorative geometry only; restore Capri's window sitting
   agentEnabled: true,
+  cognitiveEnabled: true, // bounded local reflection on detected curiosity events
   privacy: {}, // normalized by pc-context; PC awareness defaults on
   scale: 0.6,        // sprite scale, 0.6 ≈ 250px tall
   muted: false,
