@@ -9,7 +9,7 @@ const path = require('node:path');
 const WINDOW_MS = 10 * 60_000;
 const COOLDOWN_MS = 30 * 60_000;
 const MAX_QUESTIONS = 100;
-const VALID_APP = /^[\\p{L}\\p{N} ._+()-]{1,80}$/u;
+const VALID_APP = /^[\p{L}\p{N} ._+()-]{1,80}$/u;
 
 class CognitiveFoundation {
   constructor({ file = ':memory:', settings = () => ({}), context, now = Date.now } = {}) {
